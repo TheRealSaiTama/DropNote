@@ -1,0 +1,99 @@
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/instrument-serif';
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+:root {
+  --background: #f7f5f1;
+  --foreground: #161616;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-elevated: rgba(255, 255, 255, 0.94);
+  --surface-strong: #efebe4;
+  --muted: #ebe6de;
+  --muted-foreground: #6f6a63;
+  --line: rgba(22, 22, 22, 0.08);
+  --line-strong: rgba(22, 22, 22, 0.14);
+  --ring: rgba(22, 22, 22, 0.26);
+  --shadow-soft: 0 24px 70px rgba(15, 15, 15, 0.08);
+  --shadow-panel: 0 16px 36px rgba(15, 15, 15, 0.07);
+  --radius: 1.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-strong: var(--surface-strong);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ring: var(--ring);
+  --font-sans: 'Manrope', sans-serif;
+  --font-serif: 'Instrument Serif', serif;
+  --radius-sm: calc(var(--radius) - 1rem);
+  --radius-md: calc(var(--radius) - 0.65rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.75rem);
+}
+
+* {
+  border-color: var(--line);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.9), transparent 32%),
+    linear-gradient(180deg, #faf8f4 0%, #f3f0ea 55%, #ece7df 100%);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::selection {
+  background: rgba(22, 22, 22, 0.12);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.grain {
+  position: relative;
+}
+
+.grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.06)),
+    radial-gradient(circle at 20% 20%, rgba(0, 0, 0, 0.03) 0 1px, transparent 1px),
+    radial-gradient(circle at 80% 30%, rgba(0, 0, 0, 0.025) 0 1px, transparent 1px);
+  background-size: auto, 16px 16px, 18px 18px;
+  border-radius: inherit;
+  opacity: 0.55;
+}
