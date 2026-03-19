@@ -7,10 +7,16 @@ export interface AttachmentBlob {
   data: Blob
 }
 
+export interface AppMeta {
+  key: string
+  value: string
+}
+
 class DropnoteDB extends Dexie {
   notes!: Table<Note, string>
   attachments!: Table<Attachment, string>
   blobs!: Table<AttachmentBlob, string>
+  meta!: Table<AppMeta, string>
 
   constructor() {
     super('dropnote')
@@ -28,6 +34,9 @@ class DropnoteDB extends Dexie {
     this.version(4).stores({
       attachments: 'id, noteId, type, name, createdAt, syncStatus, deletedAt',
     })
+    this.version(5).stores({
+      meta: 'key',
+    })
   }
 }
 
@@ -37,4 +46,5 @@ export async function resetDatabase() {
   await db.notes.clear()
   await db.attachments.clear()
   await db.blobs.clear()
+  await db.meta.clear()
 }

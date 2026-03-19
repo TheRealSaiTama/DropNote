@@ -15,7 +15,8 @@ export function createMockNotes(): Note[] {
       tags: ['travel', 'planning', 'media'],
       attachmentsCount: 0,
       deletedAt: null,
-      syncStatus: 'pending' as const,
+      syncStatus: 'synced' as const,
+      isSeed: true,
     },
     {
       title: 'Studio reset before Monday',
@@ -27,7 +28,8 @@ export function createMockNotes(): Note[] {
       tags: ['admin', 'studio'],
       attachmentsCount: 0,
       deletedAt: null,
-      syncStatus: 'pending' as const,
+      syncStatus: 'synced' as const,
+      isSeed: true,
     },
     {
       title: 'Voice fragments worth transcribing',
@@ -39,7 +41,8 @@ export function createMockNotes(): Note[] {
       tags: ['product', 'audio'],
       attachmentsCount: 0,
       deletedAt: null,
-      syncStatus: 'pending' as const,
+      syncStatus: 'synced' as const,
+      isSeed: true,
     },
     {
       title: 'Capsule wardrobe shortlist',
@@ -51,7 +54,8 @@ export function createMockNotes(): Note[] {
       tags: ['style', 'archive'],
       attachmentsCount: 0,
       deletedAt: null,
-      syncStatus: 'pending' as const,
+      syncStatus: 'synced' as const,
+      isSeed: true,
     },
     {
       title: 'Reading stack for quiet Sundays',
@@ -63,7 +67,8 @@ export function createMockNotes(): Note[] {
       tags: ['reading', 'reference'],
       attachmentsCount: 0,
       deletedAt: null,
-      syncStatus: 'pending' as const,
+      syncStatus: 'synced' as const,
+      isSeed: true,
     },
     {
       title: 'Kitchen loop playlist ideas',
@@ -75,7 +80,8 @@ export function createMockNotes(): Note[] {
       tags: ['music', 'home'],
       attachmentsCount: 0,
       deletedAt: null,
-      syncStatus: 'pending' as const,
+      syncStatus: 'synced' as const,
+      isSeed: true,
     },
   ]
 

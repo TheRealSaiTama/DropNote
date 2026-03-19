@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { seedDatabase } from '@/data/seed-data'
 import { useAuth } from '@/hooks/use-auth'
@@ -18,12 +18,12 @@ export function AppShell() {
   const [activeFilter, setActiveFilter] = useLocalStorage<NoteFilter>('dropnote.active-filter', 'all')
   const [searchValue, setSearchValue] = useLocalStorage('dropnote.search-value', '')
   const [selectedNoteId, setSelectedNoteId] = useLocalStorage<string | null>('dropnote.selected-note-id', null)
-
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const notes = useNotesLive(activeFilter, searchValue)
   const selectedNote = useNote(selectedNoteId)
 
-  const { create, edit, remove, pin, archive } = useNoteActions()
+  const { create, edit, remove, pin, archive, bulkRemove, bulkArchive } = useNoteActions()
   const { user, signIn, signOut } = useAuth()
   const { status: syncStatus, syncNow } = useSyncStatus()
 
@@ -81,6 +81,38 @@ export function AppShell() {
 
   const handleBack = () => setSelectedNoteId(null)
 
+  const handleToggleSelect = (noteId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(noteId)) next.delete(noteId)
+      else next.add(noteId)
+      return next
+    })
+  }
+
+  const handleSelectAllVisible = () => {
+    setSelectedIds(new Set(notes.map((n) => n.id)))
+  }
+
+  const handleClearSelection = () => setSelectedIds(new Set())
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    await bulkRemove(ids)
+    if (selectedNoteId && selectedIds.has(selectedNoteId)) setSelectedNoteId(null)
+    setSelectedIds(new Set())
+    if (user) scheduleSyncDebounced(user.id)
+  }
+
+  const handleBulkArchive = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    await bulkArchive(ids, activeFilter !== 'archived')
+    setSelectedIds(new Set())
+    if (user) scheduleSyncDebounced(user.id)
+  }
+
   return (
     <div className="flex h-dvh flex-col">
       <TopBar
@@ -103,6 +135,12 @@ export function AppShell() {
             onFilterChange={setActiveFilter}
             onSelectNote={setSelectedNoteId}
             onCreateNote={handleCreateNote}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onSelectAllVisible={handleSelectAllVisible}
+            onClearSelection={handleClearSelection}
+            onBulkDelete={handleBulkDelete}
+            onBulkArchive={handleBulkArchive}
           />
         </aside>
         <main className={`${!selectedNoteId ? 'hidden' : ''} flex-1 overflow-y-auto px-5 py-4 lg:block lg:px-10 lg:py-6`}>

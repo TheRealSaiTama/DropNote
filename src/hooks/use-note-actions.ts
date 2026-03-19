@@ -7,6 +7,8 @@ import {
   toggleArchived,
   togglePinned,
   updateNote,
+  bulkDeleteNotes,
+  bulkArchiveNotes,
 } from '@/db/note-actions'
 import type { Note } from '@/types/note'
 
@@ -59,6 +61,18 @@ export function useNoteActions() {
     await toggleArchived(noteId)
   }, [])
 
+  const bulkRemove = useCallback(async (noteIds: string[]) => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+      saveTimer.current = null
+    }
+    await bulkDeleteNotes(noteIds)
+  }, [])
+
+  const bulkArchive = useCallback(async (noteIds: string[], archived: boolean) => {
+    await bulkArchiveNotes(noteIds, archived)
+  }, [])
+
   return {
     create,
     edit,
@@ -66,5 +80,7 @@ export function useNoteActions() {
     duplicate,
     pin,
     archive,
+    bulkRemove,
+    bulkArchive,
   }
 }

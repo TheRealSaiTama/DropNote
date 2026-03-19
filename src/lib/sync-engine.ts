@@ -312,6 +312,42 @@ async function pushAttachments(userId: string) {
  * First device: all local notes are 'pending', pushed to empty remote.
  * Second device: remote notes pulled first, then local pending pushed (only truly local ones).
  */
+const LEGACY_SEED_TITLES = [
+  'Arrival board for the Kyoto weekender',
+  'Studio reset before Monday',
+  'Voice fragments worth transcribing',
+  'Capsule wardrobe shortlist',
+  'Reading stack for quiet Sundays',
+  'Kitchen loop playlist ideas',
+]
+
+async function cleanupLegacySeeds(userId: string) {
+  const flag = await db.meta.get('hasCleanedLegacySeeds')
+  if (flag) return
+
+  const localNotes = await db.notes.toArray()
+  const seedNotes = localNotes.filter((n) => n.isSeed || LEGACY_SEED_TITLES.includes(n.title))
+
+  for (const note of seedNotes) {
+    await deleteLocalNote(note.id)
+    syncLog('cleaned up local seed note', note.title)
+  }
+
+  const { error } = await supabase!
+    .from('notes')
+    .delete()
+    .eq('user_id', userId)
+    .in('title', LEGACY_SEED_TITLES)
+
+  if (error) {
+    syncLog('remote seed cleanup error', error)
+    return
+  }
+
+  syncLog('cleaned up remote seed notes')
+  await db.meta.put({ key: 'hasCleanedLegacySeeds', value: 'true' })
+}
+
 export async function syncAll(userId: string): Promise<void> {
   if (!hasSupabaseEnv) return
   if (isSyncing) return
@@ -325,6 +361,7 @@ export async function syncAll(userId: string): Promise<void> {
   syncLog('sync started', userId)
 
   try {
+    await cleanupLegacySeeds(userId)
     await pullNotes(userId)
     await pushNotes(userId)
     await pullAttachments(userId)

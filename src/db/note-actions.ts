@@ -151,3 +151,18 @@ export async function getNoteWithAttachments(noteId: string): Promise<NoteWithAt
 export async function getNotesCount(): Promise<number> {
   return db.notes.count()
 }
+
+export async function bulkDeleteNotes(noteIds: string[]): Promise<void> {
+  for (const noteId of noteIds) {
+    await deleteNote(noteId)
+  }
+}
+
+export async function bulkArchiveNotes(noteIds: string[], archived: boolean): Promise<void> {
+  const timestamp = now()
+  await db.notes.where('id').anyOf(noteIds).modify({
+    archived,
+    updatedAt: timestamp,
+    syncStatus: 'pending' as const,
+  })
+}

@@ -30,6 +30,7 @@ export interface Note {
   deletedAt: string | null
   userId?: string
   syncStatus: SyncStatus
+  isSeed?: boolean
 }
 
 export type NoteFilter = 'all' | 'pinned' | 'archived'
