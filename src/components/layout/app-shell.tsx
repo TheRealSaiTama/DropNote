@@ -16,6 +16,8 @@ import { NoteEditorPane } from './note-editor-pane'
 import { NotesListPane } from './notes-list-pane'
 import { TopBar } from './top-bar'
 
+const DEV = import.meta.env.DEV
+
 export function AppShell() {
   const [activeFilter, setActiveFilter] = useLocalStorage<NoteFilter>('dropnote.active-filter', 'all')
   const [searchValue, setSearchValue] = useLocalStorage('dropnote.search-value', '')
@@ -47,25 +49,33 @@ export function AppShell() {
     return () => window.removeEventListener('online', handleOnline)
   }, [user])
 
+  const selectedNoteIdRef = useRef<string | null>(selectedNoteId)
+
   useEffect(() => {
-    function handleVisibility() {
-      if (document.visibilityState === 'visible' && user) {
-        void syncAll(user.id)
+    selectedNoteIdRef.current = selectedNoteId
+  }, [selectedNoteId])
+
+  useEffect(() => {
+    function handleForeground() {
+      if (!user) return
+      if (DEV && selectedNoteIdRef.current) {
+        console.log('[diagnostic] foreground reconcile', {
+          selectedNoteId: selectedNoteIdRef.current,
+          userId: user.id,
+        })
       }
+      startRealtime(user.id)
+      void syncAll(user.id)
     }
-    function handleFocus() {
-      if (user) void syncAll(user.id)
-    }
-    function handlePageShow() {
-      if (user) void syncAll(user.id)
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    window.addEventListener('focus', handleFocus)
-    window.addEventListener('pageshow', handlePageShow)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleForeground()
+    })
+    window.addEventListener('focus', handleForeground)
+    window.addEventListener('pageshow', handleForeground)
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibility)
-      window.removeEventListener('focus', handleFocus)
-      window.removeEventListener('pageshow', handlePageShow)
+      document.removeEventListener('visibilitychange', handleForeground)
+      window.removeEventListener('focus', handleForeground)
+      window.removeEventListener('pageshow', handleForeground)
     }
   }, [user])
 
@@ -81,8 +91,12 @@ export function AppShell() {
     setSelectedNoteId(note.id)
   }
 
-  const handleEditNote = (noteId: string, changes: Pick<Note, 'title' | 'content'>) => {
-    edit(noteId, changes)
+  const handleEditNote = (
+    noteId: string,
+    changes: Pick<Note, 'title' | 'content'>,
+    onSaved?: (changes: Pick<Note, 'title' | 'content'>) => void,
+  ) => {
+    edit(noteId, changes, onSaved)
     if (user) scheduleSyncDebounced(user.id)
   }
 

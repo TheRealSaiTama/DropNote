@@ -91,6 +91,11 @@ async function handleNoteChange(payload: Record<string, unknown>) {
     if (remoteTime <= localTime) return
 
     await db.notes.update(remote.id, remote as Partial<Note>)
+    rtLog('[diagnostic] realtime reconciled note', remote.id, {
+      remoteTime: remote.updatedAt,
+      localTime: local.updatedAt,
+      remoteContent: remote.content?.slice(0, 40),
+    })
   } catch (err) {
     rtLog('[delete] error handling note change', err)
   }
@@ -142,12 +147,14 @@ async function handleAttachmentChange(payload: Record<string, unknown>) {
           height: (r.height as number) ?? undefined,
           duration: (r.duration as number) ?? undefined,
         })
+        rtLog('[diagnostic] realtime updated attachment preview', local.id, 'for note', local.noteId)
       }
       return
     }
 
     const att = remoteToAtt(r)
     await db.attachments.add(att)
+    rtLog('[diagnostic] realtime added attachment', att.id, 'for note', att.noteId)
     if (r.remote_path) {
       enqueueDownload(att.id, r.remote_path as string)
     }

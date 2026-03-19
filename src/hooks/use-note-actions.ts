@@ -18,13 +18,19 @@ export function useNoteActions() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const scheduleAutosave = useCallback(
-    (noteId: string, changes: Pick<Note, 'title' | 'content'>) => {
+    (
+      noteId: string,
+      changes: Pick<Note, 'title' | 'content'>,
+      onSaved?: (changes: Pick<Note, 'title' | 'content'>) => void,
+    ) => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current)
       }
 
       saveTimer.current = setTimeout(() => {
-        void updateNote(noteId, changes)
+        void updateNote(noteId, changes).then(() => {
+          onSaved?.(changes)
+        })
       }, AUTOSAVE_DELAY_MS)
     },
     [],
@@ -35,8 +41,12 @@ export function useNoteActions() {
   }, [])
 
   const edit = useCallback(
-    (noteId: string, changes: Pick<Note, 'title' | 'content'>) => {
-      scheduleAutosave(noteId, changes)
+    (
+      noteId: string,
+      changes: Pick<Note, 'title' | 'content'>,
+      onSaved?: (changes: Pick<Note, 'title' | 'content'>) => void,
+    ) => {
+      scheduleAutosave(noteId, changes, onSaved)
     },
     [scheduleAutosave],
   )

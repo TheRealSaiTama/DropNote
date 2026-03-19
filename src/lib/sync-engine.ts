@@ -46,6 +46,60 @@ export function getSyncDiagnostics() {
   }
 }
 
+export async function getNoteDiagnostics(noteId: string) {
+  const note = await db.notes.get(noteId)
+  if (!note) return { exists: false }
+  const atts = await db.attachments.where('noteId').equals(noteId).toArray()
+  return {
+    exists: true,
+    id: note.id,
+    updatedAt: note.updatedAt,
+    deletedAt: note.deletedAt,
+    syncStatus: note.syncStatus,
+    title: note.title?.slice(0, 40),
+    contentLen: note.content?.length ?? 0,
+    attachments: atts.map((a) => ({
+      id: a.id,
+      deletedAt: a.deletedAt,
+      syncStatus: a.syncStatus,
+      mediaStatus: a.mediaStatus,
+      hasBlob: true,
+    })),
+  }
+}
+
+export async function forceResyncNote(noteId: string) {
+  if (!hasSupabaseEnv || !supabase) return
+  syncLog('[diagnostic] force resync note', noteId)
+  const { data, error } = await supabase.from('notes').select('*').eq('id', noteId).single()
+  if (error || !data) {
+    syncLog('[diagnostic] force resync failed', error)
+    return
+  }
+  const remote = remoteToNote(data)
+  await db.notes.update(noteId, remote as Partial<Note>)
+  syncLog('[diagnostic] force resync applied', noteId, remote.updatedAt)
+
+  const { data: attData } = await supabase.from('attachments').select('*').eq('note_id', noteId)
+  if (attData) {
+    for (const r of attData) {
+      if (r.deleted_at) {
+        await deleteLocalAttachment(r.id as string)
+        continue
+      }
+      const local = await db.attachments.get(r.id as string)
+      if (!local) {
+        const att = remoteToAtt(r)
+        await db.attachments.add(att)
+        if (r.remote_path) {
+          syncLog('[diagnostic] force resync downloading attachment blob', att.id)
+        }
+      }
+    }
+  }
+  syncLog('[diagnostic] force resync complete for note', noteId)
+}
+
 function noteToRemote(note: Note, userId: string) {
   return {
     id: note.id,
@@ -189,6 +243,11 @@ async function pullNotes(userId: string) {
 
       if (remoteTime > new Date(local.updatedAt).getTime()) {
         await db.notes.update(r.id as string, remoteToNote(r) as Partial<Note>)
+        if (DEV) syncLog('[diagnostic] pull reconciled note', r.id, {
+          remoteTime: r.updated_at,
+          localTime: local.updatedAt,
+          remoteContent: String(r.content).slice(0, 40),
+        })
       }
       // Local is newer or equal — local wins, will be pushed in pushNotes
     } catch (err) {

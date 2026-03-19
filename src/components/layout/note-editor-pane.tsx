@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import { Archive, ArrowLeft, Paperclip, Pin, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -11,9 +11,15 @@ import type { Note } from '@/types/note'
 
 import { AttachmentPreview } from './attachment-preview'
 
+const DEV = import.meta.env.DEV
+
 interface NoteEditorPaneProps {
   note: Note | null | undefined
-  onUpdateNote: (noteId: string, changes: Pick<Note, 'title' | 'content'>) => void
+  onUpdateNote: (
+    noteId: string,
+    changes: Pick<Note, 'title' | 'content'>,
+    onSaved?: (changes: Pick<Note, 'title' | 'content'>) => void,
+  ) => void
   onTogglePinned: (noteId: string) => void
   onToggleArchived: (noteId: string) => void
   onDeleteNote: (noteId: string) => void
@@ -29,14 +35,48 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
   const fileInputRef = useRef<HTMLInputElement>(null)
   const attachments = useNoteAttachments(note?.id)
 
+  const noteIdRef = useRef<string | null | undefined>(note?.id)
+  const lastSyncedRef = useRef({ title: note?.title ?? '', content: note?.content ?? '' })
+
+  useEffect(() => {
+    if (!note) return
+
+    if (noteIdRef.current !== note.id) {
+      noteIdRef.current = note.id
+      lastSyncedRef.current = { title: note.title, content: note.content }
+      if (DEV) console.log('[editor] note switched', note.id, note.updatedAt)
+      return
+    }
+
+    const dbTitle = note.title
+    const dbContent = note.content
+    const syncedTitle = lastSyncedRef.current.title
+    const syncedContent = lastSyncedRef.current.content
+
+    const dbChangedFromSynced = dbTitle !== syncedTitle || dbContent !== syncedContent
+
+    if (dbChangedFromSynced) {
+      startTransition(() => {
+        setLocalTitle(dbTitle)
+        setLocalContent(dbContent)
+      })
+      lastSyncedRef.current = { title: dbTitle, content: dbContent }
+      if (DEV) console.log('[editor] draft replaced from DB', note.id, note.updatedAt, note.syncStatus)
+    }
+  }, [note])
+
   function handleTitleChange(value: string) {
     setLocalTitle(value)
-    if (note) onUpdateNote(note.id, { title: value, content: localContent })
+    if (note) onUpdateNote(note.id, { title: value, content: localContent }, (saved) => {
+      lastSyncedRef.current = { ...lastSyncedRef.current, title: saved.title }
+    })
   }
 
   function handleContentChange(value: string) {
     setLocalContent(value)
-    if (note) onUpdateNote(note.id, { title: localTitle, content: value })
+    if (note) onUpdateNote(note.id, { title: localTitle, content: value }, (saved) => {
+      lastSyncedRef.current = { ...lastSyncedRef.current, content: saved.content }
+    })
   }
 
   async function handleFiles(files: File[]) {
