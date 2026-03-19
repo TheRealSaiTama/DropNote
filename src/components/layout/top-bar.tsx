@@ -14,12 +14,13 @@ interface TopBarProps {
   onCreateNote: () => void
   user: User | null
   syncStatus: SyncEngineStatus
+  failedJobs: number
   onSignIn: (email: string) => Promise<void>
   onSignOut: () => Promise<void>
   onSyncNow: () => void
 }
 
-export function TopBar({ searchValue, onSearchChange, onCreateNote, user, syncStatus, onSignIn, onSignOut, onSyncNow }: TopBarProps) {
+export function TopBar({ searchValue, onSearchChange, onCreateNote, user, syncStatus, failedJobs, onSignIn, onSignOut, onSyncNow }: TopBarProps) {
   return (
     <header className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:gap-3 sm:px-5 lg:px-6">
       <span className="font-serif text-xl leading-none">dropnote</span>
@@ -33,7 +34,7 @@ export function TopBar({ searchValue, onSearchChange, onCreateNote, user, syncSt
         />
       </label>
       <div className="ml-auto flex items-center gap-2 sm:ml-0">
-        <SyncIndicator status={syncStatus} onSyncNow={onSyncNow} />
+        <SyncIndicator status={syncStatus} failedJobs={failedJobs} onSyncNow={onSyncNow} />
         <AuthPanel user={user} onSignIn={onSignIn} onSignOut={onSignOut} />
         <Button size="icon" onClick={onCreateNote} className="size-9 rounded-full" aria-label="New note">
           <Plus />

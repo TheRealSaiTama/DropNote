@@ -4,10 +4,24 @@ import type { SyncEngineStatus } from '@/lib/sync-engine'
 
 interface SyncIndicatorProps {
   status: SyncEngineStatus
+  failedJobs: number
   onSyncNow: () => void
 }
 
-export function SyncIndicator({ status, onSyncNow }: SyncIndicatorProps) {
+export function SyncIndicator({ status, failedJobs, onSyncNow }: SyncIndicatorProps) {
+  if (failedJobs > 0) {
+    return (
+      <button
+        type="button"
+        onClick={onSyncNow}
+        className="flex items-center gap-1 text-xs text-destructive transition hover:opacity-80"
+      >
+        <AlertCircle className="size-3" />
+        {failedJobs} failed — retry
+      </button>
+    )
+  }
+
   if (status === 'idle') return null
 
   if (status === 'syncing') {

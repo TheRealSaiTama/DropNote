@@ -19,9 +19,10 @@ interface NoteEditorPaneProps {
   onDeleteNote: (noteId: string) => void
   onEnsureNote: () => Promise<string>
   onBack?: () => void
+  onAttachmentAdded?: (attachmentId: string) => void
 }
 
-export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArchived, onDeleteNote, onEnsureNote, onBack }: NoteEditorPaneProps) {
+export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArchived, onDeleteNote, onEnsureNote, onBack, onAttachmentAdded }: NoteEditorPaneProps) {
   const [localTitle, setLocalTitle] = useState('')
   const [localContent, setLocalContent] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -49,7 +50,8 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
         alert(`${file.name} exceeds ${formatFileSize(MAX_FILE_SIZE_BYTES)}`)
         continue
       }
-      await addAttachment(noteId, file)
+      const att = await addAttachment(noteId, file)
+      onAttachmentAdded?.(att.id)
     }
   }
 

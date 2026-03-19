@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Download, File as FileIcon, Music, X } from 'lucide-react'
+import { Download, File as FileIcon, Loader2, Music, RefreshCw, X } from 'lucide-react'
 
 import { getAttachmentBlob } from '@/db/attachment-actions'
-import { formatFileSize } from '@/lib/attachment-utils'
+import { useAttachmentJob } from '@/hooks/use-attachment-job'
+import { retryJob } from '@/lib/attachment-queue'
+import { formatFileSize, isHeic } from '@/lib/attachment-utils'
 import type { Attachment } from '@/types/note'
 
 function useBlobUrl(storageKey: string): string | null {
@@ -10,15 +12,27 @@ function useBlobUrl(storageKey: string): string | null {
 
   useEffect(() => {
     let objectUrl: string | null = null
+    let cancelled = false
 
-    getAttachmentBlob(storageKey).then((blob) => {
-      if (blob) {
-        objectUrl = URL.createObjectURL(blob)
-        setUrl(objectUrl)
-      }
-    })
+    const load = () => {
+      getAttachmentBlob(storageKey).then((blob) => {
+        if (blob && !cancelled) {
+          objectUrl = URL.createObjectURL(blob)
+          setUrl(objectUrl)
+        }
+      })
+    }
+
+    load()
+
+    const interval = setInterval(() => {
+      if (!objectUrl) load()
+      else clearInterval(interval)
+    }, 2000)
 
     return () => {
+      cancelled = true
+      clearInterval(interval)
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [storageKey])
@@ -88,6 +102,22 @@ function Lightbox({ src, alt, onClose, onDownload }: LightboxProps) {
   )
 }
 
+function JobBadge({ state }: { state: 'uploading' | 'downloading' | 'failed' }) {
+  if (state === 'failed') {
+    return (
+      <span className="flex items-center gap-1 text-[10px] text-destructive">
+        failed
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <Loader2 className="size-2.5 animate-spin" />
+      {state === 'uploading' ? 'uploading' : 'downloading'}
+    </span>
+  )
+}
+
 interface AttachmentPreviewProps {
   attachment: Attachment
   onRemove: (id: string) => void
@@ -96,8 +126,12 @@ interface AttachmentPreviewProps {
 export function AttachmentPreview({ attachment, onRemove }: AttachmentPreviewProps) {
   const blobUrl = useBlobUrl(attachment.storageKey)
   const [lightboxOpen, setLightboxOpen] = useState(false)
+  const jobState = useAttachmentJob(attachment.id)
 
-  if (attachment.type === 'image' || attachment.type === 'gif') {
+  const showJobBadge = jobState === 'uploading' || jobState === 'downloading' || jobState === 'failed'
+  const heic = isHeic(attachment.mimeType, attachment.name)
+
+  if ((attachment.type === 'image' || attachment.type === 'gif') && !heic) {
     return (
       <>
         <div className="group relative overflow-hidden rounded-xl border border-line">
@@ -109,11 +143,28 @@ export function AttachmentPreview({ attachment, onRemove }: AttachmentPreviewPro
               onClick={() => setLightboxOpen(true)}
             />
           ) : (
-            <div className="flex h-24 items-center justify-center bg-white/50 text-xs text-muted-foreground">
-              Loading…
+            <div className="flex h-24 items-center justify-center bg-white/50">
+              {jobState === 'downloading' ? (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" />
+                  downloading
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground">Loading…</span>
+              )}
             </div>
           )}
           <div className="absolute right-2 top-2 flex gap-1 transition sm:opacity-0 sm:group-hover:opacity-100">
+            {jobState === 'failed' && (
+              <button
+                type="button"
+                onClick={() => retryJob(attachment.id)}
+                className="flex size-6 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60"
+                aria-label="Retry"
+              >
+                <RefreshCw className="size-3" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void downloadFile(attachment.storageKey, attachment.name)}
@@ -131,9 +182,12 @@ export function AttachmentPreview({ attachment, onRemove }: AttachmentPreviewPro
               <X className="size-3" />
             </button>
           </div>
-          <p className="truncate px-2 py-1 text-[11px] text-muted-foreground">
-            {attachment.name} · {formatFileSize(attachment.size)}
-          </p>
+          <div className="flex items-center gap-1.5 px-2 py-1">
+            <p className="min-w-0 truncate text-[11px] text-muted-foreground">
+              {attachment.name} · {formatFileSize(attachment.size)}
+            </p>
+            {showJobBadge && <JobBadge state={jobState as 'uploading' | 'downloading' | 'failed'} />}
+          </div>
         </div>
         {lightboxOpen && blobUrl && (
           <Lightbox
@@ -157,8 +211,19 @@ export function AttachmentPreview({ attachment, onRemove }: AttachmentPreviewPro
             <span className="shrink-0 text-xs text-muted-foreground">
               {formatFileSize(attachment.size)}
             </span>
+            {showJobBadge && <JobBadge state={jobState as 'uploading' | 'downloading' | 'failed'} />}
           </div>
           <div className="flex shrink-0 gap-1">
+            {jobState === 'failed' && (
+              <button
+                type="button"
+                onClick={() => retryJob(attachment.id)}
+                className="flex size-6 items-center justify-center rounded-full text-destructive transition hover:bg-black/5"
+                aria-label="Retry"
+              >
+                <RefreshCw className="size-3.5" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void downloadFile(attachment.storageKey, attachment.name)}
@@ -177,7 +242,14 @@ export function AttachmentPreview({ attachment, onRemove }: AttachmentPreviewPro
             </button>
           </div>
         </div>
-        {blobUrl && <audio controls src={blobUrl} className="w-full" />}
+        {blobUrl ? (
+          <audio controls src={blobUrl} className="w-full" />
+        ) : jobState === 'downloading' ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" />
+            downloading audio…
+          </span>
+        ) : null}
       </div>
     )
   }
@@ -187,11 +259,24 @@ export function AttachmentPreview({ attachment, onRemove }: AttachmentPreviewPro
       <FileIcon className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{attachment.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {attachment.mimeType || 'Unknown type'} · {formatFileSize(attachment.size)}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs text-muted-foreground">
+            {attachment.mimeType || 'Unknown type'} · {formatFileSize(attachment.size)}
+          </p>
+          {showJobBadge && <JobBadge state={jobState as 'uploading' | 'downloading' | 'failed'} />}
+        </div>
       </div>
       <div className="flex shrink-0 gap-1">
+        {jobState === 'failed' && (
+          <button
+            type="button"
+            onClick={() => retryJob(attachment.id)}
+            className="flex size-6 items-center justify-center rounded-full text-destructive transition hover:bg-black/5"
+            aria-label="Retry"
+          >
+            <RefreshCw className="size-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void downloadFile(attachment.storageKey, attachment.name)}

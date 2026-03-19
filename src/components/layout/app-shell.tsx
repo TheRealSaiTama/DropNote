@@ -7,6 +7,8 @@ import { useNoteActions } from '@/hooks/use-note-actions'
 import { useNotesLive } from '@/hooks/use-notes'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useSyncStatus } from '@/hooks/use-sync-status'
+import { enqueueUpload } from '@/lib/attachment-queue'
+import { startRealtime, stopRealtime } from '@/lib/realtime'
 import { scheduleSyncDebounced, syncAll } from '@/lib/sync-engine'
 import type { Note, NoteFilter } from '@/types/note'
 
@@ -25,10 +27,16 @@ export function AppShell() {
 
   const { create, edit, remove, pin, archive, bulkRemove, bulkArchive } = useNoteActions()
   const { user, signIn, signOut } = useAuth()
-  const { status: syncStatus, syncNow } = useSyncStatus()
+  const { status: syncStatus, syncNow, failedJobs } = useSyncStatus()
 
   useEffect(() => {
-    if (user) void syncAll(user.id)
+    if (user) {
+      void syncAll(user.id)
+      startRealtime(user.id)
+    } else {
+      stopRealtime()
+    }
+    return () => stopRealtime()
   }, [user])
 
   useEffect(() => {
@@ -81,6 +89,13 @@ export function AppShell() {
 
   const handleBack = () => setSelectedNoteId(null)
 
+  const handleAttachmentAdded = useCallback((attachmentId: string) => {
+    if (user) {
+      enqueueUpload(attachmentId, user.id)
+      scheduleSyncDebounced(user.id)
+    }
+  }, [user])
+
   const handleToggleSelect = (noteId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -121,6 +136,7 @@ export function AppShell() {
         onCreateNote={handleCreateNote}
         user={user}
         syncStatus={syncStatus}
+        failedJobs={failedJobs}
         onSignIn={signIn}
         onSignOut={signOut}
         onSyncNow={() => { if (user) syncNow(user.id) }}
@@ -152,6 +168,7 @@ export function AppShell() {
             onDeleteNote={handleDeleteNote}
             onEnsureNote={handleEnsureNote}
             onBack={handleBack}
+            onAttachmentAdded={handleAttachmentAdded}
           />
         </main>
       </div>

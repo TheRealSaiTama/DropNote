@@ -1,5 +1,6 @@
 export type AttachmentType = 'image' | 'gif' | 'audio' | 'file'
 export type SyncStatus = 'pending' | 'synced'
+export type AttachmentJobState = 'idle' | 'uploading' | 'downloading' | 'done' | 'failed'
 
 export interface Attachment {
   id: string

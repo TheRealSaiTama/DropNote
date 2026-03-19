@@ -29,7 +29,7 @@ export function subscribeSyncStatus(fn: (s: SyncEngineStatus) => void): () => vo
   return () => listeners.delete(fn)
 }
 
-export function scheduleSyncDebounced(userId: string, delayMs = 4000): void {
+export function scheduleSyncDebounced(userId: string, delayMs = 1000): void {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     debounceTimer = null
@@ -63,7 +63,7 @@ function noteToRemote(note: Note, userId: string) {
   }
 }
 
-function remoteToNote(r: Record<string, unknown>): Note {
+export function remoteToNote(r: Record<string, unknown>): Note {
   return {
     id: r.id as string,
     userId: r.user_id as string,
@@ -96,7 +96,7 @@ function attToRemote(att: Attachment, userId: string) {
   }
 }
 
-function remoteToAtt(r: Record<string, unknown>): Attachment {
+export function remoteToAtt(r: Record<string, unknown>): Attachment {
   return {
     id: r.id as string,
     noteId: r.note_id as string,
@@ -113,7 +113,7 @@ function remoteToAtt(r: Record<string, unknown>): Attachment {
   }
 }
 
-async function deleteLocalNote(noteId: string) {
+export async function deleteLocalNote(noteId: string) {
   const atts = await db.attachments.where('noteId').equals(noteId).toArray()
   await db.blobs.bulkDelete(atts.map((a) => a.storageKey))
   await db.attachments.where('noteId').equals(noteId).delete()
