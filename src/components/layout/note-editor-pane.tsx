@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Archive, ArrowLeft, Paperclip, Pin, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -20,18 +20,14 @@ interface NoteEditorPaneProps {
   onEnsureNote: () => Promise<string>
   onBack?: () => void
   onAttachmentAdded?: (attachmentId: string) => void
+  onAttachmentRemoved?: (attachmentId: string) => void
 }
 
-export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArchived, onDeleteNote, onEnsureNote, onBack, onAttachmentAdded }: NoteEditorPaneProps) {
-  const [localTitle, setLocalTitle] = useState('')
-  const [localContent, setLocalContent] = useState('')
+export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArchived, onDeleteNote, onEnsureNote, onBack, onAttachmentAdded, onAttachmentRemoved }: NoteEditorPaneProps) {
+  const [localTitle, setLocalTitle] = useState(() => note?.title ?? '')
+  const [localContent, setLocalContent] = useState(() => note?.content ?? '')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const attachments = useNoteAttachments(note?.id)
-
-  useEffect(() => {
-    setLocalTitle(note?.title ?? '')
-    setLocalContent(note?.content ?? '')
-  }, [note?.id])
 
   function handleTitleChange(value: string) {
     setLocalTitle(value)
@@ -53,6 +49,14 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
       const att = await addAttachment(noteId, file)
       onAttachmentAdded?.(att.id)
     }
+  }
+
+  function handleAttachmentRemoved(attachmentId: string) {
+    void removeAttachment(attachmentId).then(() => {
+      onAttachmentRemoved?.(attachmentId)
+    }).catch((error) => {
+      if (import.meta.env.DEV) console.error('[delete] attachment delete failed', attachmentId, error)
+    })
   }
 
   const { isDragging, onDragEnter, onDragLeave, onDragOver, onDrop } = useFileDrop({ onFiles: handleFiles })
@@ -145,7 +149,7 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
       {visualAttachments.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {visualAttachments.map((att) => (
-            <AttachmentPreview key={att.id} attachment={att} onRemove={removeAttachment} />
+            <AttachmentPreview key={att.id} attachment={att} onRemove={handleAttachmentRemoved} />
           ))}
         </div>
       )}
@@ -153,7 +157,7 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
       {otherAttachments.length > 0 && (
         <div className="mt-3 space-y-1.5">
           {otherAttachments.map((att) => (
-            <AttachmentPreview key={att.id} attachment={att} onRemove={removeAttachment} />
+            <AttachmentPreview key={att.id} attachment={att} onRemove={handleAttachmentRemoved} />
           ))}
         </div>
       )}

@@ -60,16 +60,21 @@ export async function deleteNote(noteId: string): Promise<void> {
   if (note.userId) {
     await db.transaction('rw', db.notes, db.attachments, db.blobs, async () => {
       const atts = await db.attachments.where('noteId').equals(noteId).toArray()
-      await db.blobs.bulkDelete(atts.map((a) => a.storageKey))
+      const blobKeys = atts.flatMap((a) => [a.storageKey, ...(a.previewStorageKey ? [a.previewStorageKey] : [])])
+      await db.blobs.bulkDelete(blobKeys)
       await db.attachments.where('noteId').equals(noteId).delete()
-      await db.notes.update(noteId, { deletedAt: now(), syncStatus: 'pending' })
+      const ts = now()
+      await db.notes.update(noteId, { deletedAt: ts, updatedAt: ts, syncStatus: 'pending' })
+      if (import.meta.env.DEV) console.log('[delete] local tombstone created', noteId)
     })
   } else {
     await db.transaction('rw', db.notes, db.attachments, db.blobs, async () => {
       const atts = await db.attachments.where('noteId').equals(noteId).toArray()
-      await db.blobs.bulkDelete(atts.map((a) => a.storageKey))
+      const blobKeys = atts.flatMap((a) => [a.storageKey, ...(a.previewStorageKey ? [a.previewStorageKey] : [])])
+      await db.blobs.bulkDelete(blobKeys)
       await db.attachments.where('noteId').equals(noteId).delete()
       await db.notes.delete(noteId)
+      if (import.meta.env.DEV) console.log('[delete] local hard-delete (unsigned)', noteId)
     })
   }
 }
@@ -153,6 +158,7 @@ export async function getNotesCount(): Promise<number> {
 }
 
 export async function bulkDeleteNotes(noteIds: string[]): Promise<void> {
+  if (import.meta.env.DEV) console.log('[delete] bulk delete', noteIds.length, 'notes')
   for (const noteId of noteIds) {
     await deleteNote(noteId)
   }

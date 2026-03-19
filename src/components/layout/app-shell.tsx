@@ -47,6 +47,28 @@ export function AppShell() {
     return () => window.removeEventListener('online', handleOnline)
   }, [user])
 
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'visible' && user) {
+        void syncAll(user.id)
+      }
+    }
+    function handleFocus() {
+      if (user) void syncAll(user.id)
+    }
+    function handlePageShow() {
+      if (user) void syncAll(user.id)
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('pageshow', handlePageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('pageshow', handlePageShow)
+    }
+  }, [user])
+
   const initRef = useRef(false)
   useEffect(() => {
     if (initRef.current) return
@@ -77,7 +99,10 @@ export function AppShell() {
   const handleDeleteNote = async (noteId: string) => {
     await remove(noteId)
     setSelectedNoteId(null)
-    if (user) scheduleSyncDebounced(user.id)
+    if (user) {
+      if (import.meta.env.DEV) console.log('[delete] immediate sync started for', noteId)
+      void syncAll(user.id)
+    }
   }
 
   const handleEnsureNote = useCallback(async (): Promise<string> => {
@@ -93,6 +118,13 @@ export function AppShell() {
     if (user) {
       enqueueUpload(attachmentId, user.id)
       scheduleSyncDebounced(user.id)
+    }
+  }, [user])
+
+  const handleAttachmentRemoved = useCallback((attachmentId: string) => {
+    if (user) {
+      if (import.meta.env.DEV) console.log('[delete] immediate attachment sync started for', attachmentId)
+      void syncAll(user.id)
     }
   }, [user])
 
@@ -117,7 +149,10 @@ export function AppShell() {
     await bulkRemove(ids)
     if (selectedNoteId && selectedIds.has(selectedNoteId)) setSelectedNoteId(null)
     setSelectedIds(new Set())
-    if (user) scheduleSyncDebounced(user.id)
+    if (user) {
+      if (import.meta.env.DEV) console.log('[delete] immediate bulk sync started for', ids.length, 'notes')
+      void syncAll(user.id)
+    }
   }
 
   const handleBulkArchive = async () => {
@@ -161,6 +196,7 @@ export function AppShell() {
         </aside>
         <main className={`${!selectedNoteId ? 'hidden' : ''} flex-1 overflow-y-auto px-5 py-4 lg:block lg:px-10 lg:py-6`}>
           <NoteEditorPane
+            key={selectedNote?.id ?? 'none'}
             note={selectedNote}
             onUpdateNote={handleEditNote}
             onTogglePinned={handlePin}
@@ -169,6 +205,7 @@ export function AppShell() {
             onEnsureNote={handleEnsureNote}
             onBack={handleBack}
             onAttachmentAdded={handleAttachmentAdded}
+            onAttachmentRemoved={handleAttachmentRemoved}
           />
         </main>
       </div>

@@ -1,7 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { db } from '@/db/dropnote-db'
 import { supabase, hasSupabaseEnv } from './supabase'
-import { remoteToNote, remoteToAtt, deleteLocalNote } from './sync-engine'
+import { remoteToNote, remoteToAtt, deleteLocalNote, deleteLocalAttachment } from './sync-engine'
 import { enqueueDownload } from './attachment-queue'
 import type { Note } from '@/types/note'
 
@@ -12,6 +12,14 @@ function rtLog(...args: unknown[]) {
 }
 
 let channel: RealtimeChannel | null = null
+
+function getPayloadRecord(payload: Record<string, unknown>): Record<string, unknown> | undefined {
+  const eventType = String(payload.eventType ?? '')
+  if (eventType === 'DELETE') {
+    return (payload.old as Record<string, unknown> | undefined) ?? (payload.new as Record<string, unknown> | undefined)
+  }
+  return (payload.new as Record<string, unknown> | undefined) ?? (payload.old as Record<string, unknown> | undefined)
+}
 
 export function startRealtime(userId: string): void {
   if (!hasSupabaseEnv || !supabase) return
@@ -43,22 +51,37 @@ export function stopRealtime(): void {
 }
 
 async function handleNoteChange(payload: Record<string, unknown>) {
-  const r = payload.new as Record<string, unknown> | undefined
+  const eventType = String(payload.eventType ?? '')
+  const r = getPayloadRecord(payload)
   if (!r || !r.id) return
 
-  rtLog(payload.eventType, 'note', r.id)
+  rtLog(eventType, 'note', r.id)
 
   try {
-    const local = await db.notes.get(r.id as string)
     const remote = remoteToNote(r)
+    const local = await db.notes.get(remote.id)
 
-    if (payload.eventType === 'DELETE') {
-      if (local) await deleteLocalNote(r.id as string)
+    if (eventType === 'DELETE') {
+      rtLog('[delete] received realtime hard delete', remote.id)
+      await deleteLocalNote(remote.id)
+      rtLog('[delete] realtime cleanup finished', remote.id)
+      return
+    }
+
+    if (remote.deletedAt) {
+      rtLog('[delete] received realtime tombstone', remote.id)
+      await deleteLocalNote(remote.id)
+      rtLog('[delete] realtime cleanup finished', remote.id)
+      return
+    }
+
+    if (local?.deletedAt) {
+      rtLog('[delete] keeping local note tombstone pending', remote.id)
       return
     }
 
     if (!local) {
-      if (!remote.deletedAt) await db.notes.add(remote)
+      await db.notes.add(remote)
       return
     }
 
@@ -67,33 +90,40 @@ async function handleNoteChange(payload: Record<string, unknown>) {
 
     if (remoteTime <= localTime) return
 
-    if (remote.deletedAt) {
-      await deleteLocalNote(remote.id)
-    } else {
-      await db.notes.update(remote.id, remote as Partial<Note>)
-    }
+    await db.notes.update(remote.id, remote as Partial<Note>)
   } catch (err) {
-    rtLog('error handling note change', err)
+    rtLog('[delete] error handling note change', err)
   }
 }
 
 async function handleAttachmentChange(payload: Record<string, unknown>) {
-  const r = payload.new as Record<string, unknown> | undefined
+  const eventType = String(payload.eventType ?? '')
+  const r = getPayloadRecord(payload)
   if (!r || !r.id) return
 
-  rtLog(payload.eventType, 'attachment', r.id)
+  rtLog(eventType, 'attachment', r.id)
 
   try {
+    if (eventType === 'DELETE') {
+      rtLog('[delete] received realtime hard delete attachment', r.id)
+      await deleteLocalAttachment(r.id as string)
+      rtLog('[delete] realtime attachment cleanup finished', r.id)
+      return
+    }
+
     if (r.deleted_at) {
-      const local = await db.attachments.get(r.id as string)
-      if (local && !local.deletedAt) {
-        await db.blobs.delete(local.storageKey)
-        await db.attachments.delete(local.id)
-      }
+      rtLog('[delete] received realtime attachment tombstone', r.id)
+      await deleteLocalAttachment(r.id as string)
+      rtLog('[delete] realtime attachment cleanup finished', r.id)
       return
     }
 
     const local = await db.attachments.get(r.id as string)
+
+    if (local?.deletedAt) {
+      rtLog('[delete] keeping local attachment tombstone pending', r.id)
+      return
+    }
 
     if (local) {
       const blob = await db.blobs.get(local.storageKey)
@@ -125,6 +155,6 @@ async function handleAttachmentChange(payload: Record<string, unknown>) {
       enqueueDownload(att.id + '-preview', r.preview_path as string)
     }
   } catch (err) {
-    rtLog('error handling attachment change', err)
+    rtLog('[delete] error handling attachment change', err)
   }
 }

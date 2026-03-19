@@ -129,9 +129,16 @@ export function remoteToAtt(r: Record<string, unknown>): Attachment {
 
 export async function deleteLocalNote(noteId: string) {
   const atts = await db.attachments.where('noteId').equals(noteId).toArray()
-  await db.blobs.bulkDelete(atts.map((a) => a.storageKey))
+  const blobKeys = atts.flatMap((a) => [a.storageKey, ...(a.previewStorageKey ? [a.previewStorageKey] : [])])
+  await db.blobs.bulkDelete(blobKeys)
   await db.attachments.where('noteId').equals(noteId).delete()
   await db.notes.delete(noteId)
+}
+
+export async function deleteLocalAttachment(attachmentId: string) {
+  await db.blobs.delete(attachmentId)
+  await db.blobs.delete(`${attachmentId}-preview`)
+  await db.attachments.delete(attachmentId)
 }
 
 async function cleanupRemoteAttachmentsForNote(noteId: string) {
@@ -144,9 +151,10 @@ async function cleanupRemoteAttachmentsForNote(noteId: string) {
   const paths = data.filter((a) => a.remote_path).map((a) => a.remote_path as string)
   if (paths.length > 0) {
     const { error } = await supabase!.storage.from('attachments').remove(paths)
-    if (error) syncLog('storage cleanup error for note', noteId, error)
+    if (error) syncLog('[delete] remote storage cleanup error for note', noteId, error)
   }
-  await supabase!.from('attachments').delete().eq('note_id', noteId)
+  const { error } = await supabase!.from('attachments').delete().eq('note_id', noteId)
+  if (error) syncLog('[delete] remote attachment row cleanup error for note', noteId, error)
 }
 
 
@@ -163,19 +171,28 @@ async function pullNotes(userId: string) {
       const local = await db.notes.get(r.id as string)
       const remoteTime = new Date(r.updated_at as string).getTime()
 
+      if (r.deleted_at) {
+        syncLog('[delete] pull applied tombstone', r.id)
+        await deleteLocalNote(r.id as string)
+        continue
+      }
+
+      if (local?.deletedAt) {
+        syncLog('[delete] keeping local note tombstone pending', r.id)
+        continue
+      }
+
       if (!local) {
-        if (r.deleted_at) continue
         await db.notes.add(remoteToNote(r))
-      } else if (remoteTime > new Date(local.updatedAt).getTime()) {
-        if (r.deleted_at) {
-          await deleteLocalNote(r.id as string)
-        } else {
-          await db.notes.update(r.id as string, remoteToNote(r) as Partial<Note>)
-        }
+        continue
+      }
+
+      if (remoteTime > new Date(local.updatedAt).getTime()) {
+        await db.notes.update(r.id as string, remoteToNote(r) as Partial<Note>)
       }
       // Local is newer or equal — local wins, will be pushed in pushNotes
     } catch (err) {
-      syncLog('error pulling note', r.id, err)
+      syncLog('[delete] pull note failure', r.id, err)
     }
   }
 }
@@ -186,20 +203,27 @@ async function pushNotes(userId: string) {
 
   for (const note of pending) {
     try {
+      if (note.deletedAt) {
+        syncLog('[delete] pushing tombstone note', note.id)
+      }
       const { error } = await supabase!.from('notes').upsert(noteToRemote(note, userId))
       if (error) {
-        syncLog('push note error', note.id, error)
+        if (note.deletedAt) syncLog('[delete] remote tombstone push failed', note.id, error)
+        else syncLog('push note error', note.id, error)
         continue
       }
 
       if (note.deletedAt) {
+        syncLog('[delete] remote tombstone pushed', note.id)
         await cleanupRemoteAttachmentsForNote(note.id)
         await deleteLocalNote(note.id)
+        syncLog('[delete] cleanup finished', note.id)
       } else {
         await db.notes.update(note.id, { syncStatus: 'synced', userId })
       }
     } catch (err) {
-      syncLog('error pushing note', note.id, err)
+      if (note.deletedAt) syncLog('[delete] push tombstone note failure', note.id, err)
+      else syncLog('error pushing note', note.id, err)
     }
   }
 }
@@ -214,16 +238,17 @@ async function pullAttachments(userId: string) {
 
   for (const r of data) {
     if (r.deleted_at) {
-      const local = await db.attachments.get(r.id as string)
-      if (local && !local.deletedAt) {
-        await db.blobs.delete(local.storageKey)
-        await db.attachments.delete(local.id)
-        syncLog('applied remote attachment tombstone', r.id)
-      }
+      syncLog('[delete] pull applied attachment tombstone', r.id)
+      await deleteLocalAttachment(r.id as string)
       continue
     }
     try {
       const local = await db.attachments.get(r.id as string)
+
+      if (local?.deletedAt) {
+        syncLog('[delete] keeping local attachment tombstone pending', r.id)
+        continue
+      }
 
       if (local) {
         if (!r.remote_path) continue
@@ -279,7 +304,7 @@ async function pullAttachments(userId: string) {
         }
       }
     } catch (err) {
-      syncLog('error pulling attachment', r.id, err)
+      syncLog('[delete] pull attachment failure', r.id, err)
     }
   }
 }
@@ -307,16 +332,20 @@ async function pushAttachments(userId: string) {
       }
 
       if (att.deletedAt) {
+        syncLog('[delete] pushing tombstone attachment', att.id)
         if (att.remotePath) {
-          await supabase!.storage.from('attachments').remove([att.remotePath])
+          const { error: storageError } = await supabase!.storage.from('attachments').remove([att.remotePath])
+          if (storageError) {
+            syncLog('[delete] remote attachment storage cleanup failed', att.id, storageError)
+          }
         }
         const { error } = await supabase!.from('attachments').upsert(attToRemote(att, userId))
         if (!error) {
-          await db.blobs.delete(att.storageKey)
-          await db.attachments.delete(att.id)
-          syncLog('pushed tombstone attachment', att.id)
+          await deleteLocalAttachment(att.id)
+          syncLog('[delete] remote attachment tombstone pushed', att.id)
+          syncLog('[delete] cleanup finished attachment', att.id)
         } else {
-          syncLog('tombstone push error', att.id, error)
+          syncLog('[delete] remote attachment tombstone push failed', att.id, error)
         }
         continue
       }
@@ -328,7 +357,7 @@ async function pushAttachments(userId: string) {
         syncLog('attachment metadata push error', att.id, error)
       }
     } catch (err) {
-      syncLog('error pushing attachment', att.id, err)
+      syncLog('[delete] push attachment failure', att.id, err)
     }
   }
 }
@@ -337,9 +366,9 @@ async function pushAttachments(userId: string) {
  * Merge strategy: last-write-wins on updatedAt.
  *
  * Pull runs before push. During pull:
- *   - Remote note with newer updatedAt overwrites local (even if local is 'pending').
- *   - Local note with newer or equal updatedAt is kept and will be pushed.
- *   - Remote tombstone (deleted_at set) with newer updatedAt deletes locally.
+ *   - Remote tombstone (deleted_at set) always deletes locally.
+ *   - Remote active note with newer updatedAt overwrites local.
+ *   - Local active note with newer or equal updatedAt is kept and will be pushed.
  *
  * This means: if two devices edit the same note offline, the one that syncs last wins.
  * The losing device's changes are silently discarded on next pull. This is intentional
@@ -386,7 +415,10 @@ async function cleanupLegacySeeds(userId: string) {
 
 export async function syncAll(userId: string): Promise<void> {
   if (!hasSupabaseEnv) return
-  if (isSyncing) return
+  if (isSyncing) {
+    scheduleSyncDebounced(userId, 500)
+    return
+  }
   if (!navigator.onLine) {
     setStatus('offline')
     return

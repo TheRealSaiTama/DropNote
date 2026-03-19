@@ -45,31 +45,32 @@ export async function addAttachment(noteId: string, file: File): Promise<Attachm
 export async function removeAttachment(attachmentId: string): Promise<void> {
   const att = await db.attachments.get(attachmentId)
   if (!att) return
+  const note = await db.notes.get(att.noteId)
+  const signedIn = Boolean(att.userId || note?.userId)
 
-  if (att.userId) {
+  if (signedIn) {
+    const ts = now()
     await db.transaction('rw', db.attachments, db.notes, async () => {
       await db.attachments.update(attachmentId, {
-        deletedAt: now(),
+        deletedAt: ts,
         syncStatus: 'pending' as const,
       })
-      await db.notes
-        .where('id')
-        .equals(att.noteId)
-        .modify((note) => {
-          note.attachmentsCount = Math.max(0, (note.attachmentsCount ?? 0) - 1)
-        })
+      await db.notes.update(att.noteId, {
+        attachmentsCount: Math.max(0, (note?.attachmentsCount ?? 0) - 1),
+        updatedAt: ts,
+        syncStatus: 'pending' as const,
+      })
+      if (import.meta.env.DEV) console.log('[delete] attachment tombstone created', attachmentId, 'for note', att.noteId)
     })
   } else {
     await db.transaction('rw', db.attachments, db.blobs, db.notes, async () => {
       await db.blobs.delete(att.storageKey)
       if (att.previewStorageKey) await db.blobs.delete(att.previewStorageKey)
       await db.attachments.delete(attachmentId)
-      await db.notes
-        .where('id')
-        .equals(att.noteId)
-        .modify((note) => {
-          note.attachmentsCount = Math.max(0, (note.attachmentsCount ?? 0) - 1)
-        })
+      await db.notes.update(att.noteId, {
+        attachmentsCount: Math.max(0, (note?.attachmentsCount ?? 0) - 1),
+      })
+      if (import.meta.env.DEV) console.log('[delete] attachment hard-delete (unsigned)', attachmentId, 'for note', att.noteId)
     })
   }
 }
