@@ -33,8 +33,24 @@ create table if not exists public.attachments (
   size integer not null,
   remote_path text default null,
   created_at timestamptz not null,
-  deleted_at timestamptz default null
+  deleted_at timestamptz default null,
+  media_status text not null default 'uploaded',
+  preview_path text default null,
+  preview_mime text default null,
+  error_code text default null,
+  width integer default null,
+  height integer default null,
+  duration float default null
 );
+
+alter table public.attachments
+  add column if not exists media_status text not null default 'uploaded',
+  add column if not exists preview_path text default null,
+  add column if not exists preview_mime text default null,
+  add column if not exists error_code text default null,
+  add column if not exists width integer default null,
+  add column if not exists height integer default null,
+  add column if not exists duration float default null;
 
 alter table public.attachments enable row level security;
 

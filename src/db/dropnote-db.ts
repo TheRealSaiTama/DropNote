@@ -37,6 +37,9 @@ class DropnoteDB extends Dexie {
     this.version(5).stores({
       meta: 'key',
     })
+    this.version(6).stores({
+      attachments: 'id, noteId, type, name, createdAt, syncStatus, deletedAt, mediaStatus',
+    })
   }
 }
 

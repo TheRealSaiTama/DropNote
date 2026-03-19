@@ -74,8 +74,8 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
     )
   }
 
-  const imageAttachments = attachments.filter((a) => a.type === 'image' || a.type === 'gif')
-  const otherAttachments = attachments.filter((a) => a.type !== 'image' && a.type !== 'gif')
+  const visualAttachments = attachments.filter((a) => a.type === 'image' || a.type === 'gif' || a.type === 'video')
+  const otherAttachments = attachments.filter((a) => a.type !== 'image' && a.type !== 'gif' && a.type !== 'video')
 
   return (
     <section
@@ -142,9 +142,9 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
         className="mt-3 w-full flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground/50"
       />
 
-      {imageAttachments.length > 0 && (
+      {visualAttachments.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {imageAttachments.map((att) => (
+          {visualAttachments.map((att) => (
             <AttachmentPreview key={att.id} attachment={att} onRemove={removeAttachment} />
           ))}
         </div>

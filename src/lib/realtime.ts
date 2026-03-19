@@ -100,6 +100,19 @@ async function handleAttachmentChange(payload: Record<string, unknown>) {
       if (!blob && r.remote_path) {
         enqueueDownload(r.id as string, r.remote_path as string)
       }
+      if (r.preview_path && !local.previewStorageKey) {
+        const previewKey = local.id + '-preview'
+        enqueueDownload(previewKey, r.preview_path as string)
+        await db.attachments.update(local.id, {
+          previewStorageKey: previewKey,
+          previewPath: r.preview_path as string,
+          previewMime: (r.preview_mime as string) ?? undefined,
+          mediaStatus: 'ready',
+          width: (r.width as number) ?? undefined,
+          height: (r.height as number) ?? undefined,
+          duration: (r.duration as number) ?? undefined,
+        })
+      }
       return
     }
 
@@ -107,6 +120,9 @@ async function handleAttachmentChange(payload: Record<string, unknown>) {
     await db.attachments.add(att)
     if (r.remote_path) {
       enqueueDownload(att.id, r.remote_path as string)
+    }
+    if (r.preview_path) {
+      enqueueDownload(att.id + '-preview', r.preview_path as string)
     }
   } catch (err) {
     rtLog('error handling attachment change', err)

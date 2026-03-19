@@ -1,6 +1,6 @@
 import { db } from '@/db/dropnote-db'
 import { supabase, hasSupabaseEnv } from './supabase'
-import type { Attachment, Note } from '@/types/note'
+import type { Attachment, Note, MediaStatus } from '@/types/note'
 
 export type SyncEngineStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline'
 
@@ -93,6 +93,13 @@ function attToRemote(att: Attachment, userId: string) {
     remote_path: att.remotePath ?? null,
     created_at: att.createdAt,
     deleted_at: att.deletedAt ?? null,
+    media_status: att.mediaStatus ?? 'uploaded',
+    preview_path: att.previewPath ?? null,
+    preview_mime: att.previewMime ?? null,
+    width: att.width ?? null,
+    height: att.height ?? null,
+    duration: att.duration ?? null,
+    error_code: att.errorCode ?? null,
   }
 }
 
@@ -110,6 +117,13 @@ export function remoteToAtt(r: Record<string, unknown>): Attachment {
     createdAt: r.created_at as string,
     deletedAt: (r.deleted_at as string) ?? null,
     syncStatus: 'synced',
+    mediaStatus: (r.media_status as MediaStatus) ?? 'uploaded',
+    previewPath: (r.preview_path as string) ?? undefined,
+    previewMime: (r.preview_mime as string) ?? undefined,
+    width: (r.width as number) ?? undefined,
+    height: (r.height as number) ?? undefined,
+    duration: (r.duration as number) ?? undefined,
+    errorCode: (r.error_code as string) ?? undefined,
   }
 }
 
@@ -225,6 +239,17 @@ async function pullAttachments(userId: string) {
         } else {
           syncLog('blob re-download error', r.id, dlErr)
         }
+        if (r.preview_path && !local.previewStorageKey) {
+          const previewKey = local.id + '-preview'
+          const { data: previewData, error: prevErr } = await supabase!.storage
+            .from('attachments')
+            .download(r.preview_path as string)
+          if (previewData && !prevErr) {
+            await db.blobs.put({ storageKey: previewKey, data: previewData })
+            await db.attachments.update(local.id, { previewStorageKey: previewKey, previewPath: r.preview_path as string, previewMime: (r.preview_mime as string) ?? undefined, mediaStatus: 'ready', width: (r.width as number) ?? undefined, height: (r.height as number) ?? undefined, duration: (r.duration as number) ?? undefined })
+            syncLog('downloaded preview for existing', r.id)
+          }
+        }
         continue
       }
 
@@ -240,6 +265,17 @@ async function pullAttachments(userId: string) {
           syncLog('downloaded blob', r.id)
         } else {
           syncLog('blob download error', r.id, dlErr)
+        }
+      }
+      if (r.preview_path && att.mediaStatus === 'ready') {
+        const previewKey = att.id + '-preview'
+        const { data: previewData, error: prevErr } = await supabase!.storage
+          .from('attachments')
+          .download(r.preview_path as string)
+        if (previewData && !prevErr) {
+          await db.blobs.put({ storageKey: previewKey, data: previewData })
+          await db.attachments.update(att.id, { previewStorageKey: previewKey })
+          syncLog('downloaded preview', r.id)
         }
       }
     } catch (err) {

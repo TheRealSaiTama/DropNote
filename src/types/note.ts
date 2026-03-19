@@ -1,6 +1,7 @@
-export type AttachmentType = 'image' | 'gif' | 'audio' | 'file'
+export type AttachmentType = 'image' | 'gif' | 'audio' | 'video' | 'file'
 export type SyncStatus = 'pending' | 'synced'
 export type AttachmentJobState = 'idle' | 'uploading' | 'downloading' | 'done' | 'failed'
+export type MediaStatus = 'uploaded' | 'processing' | 'ready' | 'failed'
 
 export interface Attachment {
   id: string
@@ -15,6 +16,15 @@ export interface Attachment {
   userId?: string
   remotePath?: string
   syncStatus: SyncStatus
+  mediaStatus?: MediaStatus
+  previewStorageKey?: string
+  previewPath?: string
+  previewMime?: string
+  originalMime?: string
+  width?: number
+  height?: number
+  duration?: number
+  errorCode?: string
 }
 
 export interface Note {

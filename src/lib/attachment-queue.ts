@@ -1,4 +1,6 @@
 import { db } from '@/db/dropnote-db'
+import { needsProcessing } from './attachment-utils'
+import { processAttachment } from './media-processor'
 import { supabase, hasSupabaseEnv } from './supabase'
 import type { AttachmentJobState } from '@/types/note'
 
@@ -112,6 +114,37 @@ async function runUpload(job: Job) {
     if (upsertError) throw upsertError
 
     await db.attachments.update(att.id, { syncStatus: 'synced', userId: job.userId })
+
+    const freshAtt = await db.attachments.get(att.id)
+    if (freshAtt?.previewStorageKey && freshAtt.mediaStatus === 'ready' && !freshAtt.previewPath) {
+      try {
+        const previewBlob = await db.blobs.get(freshAtt.previewStorageKey)
+        if (previewBlob) {
+          const previewRemotePath = `${job.userId}/${att.id}/preview.jpg`
+          const { error: previewUploadErr } = await supabase!.storage
+            .from('attachments')
+            .upload(previewRemotePath, previewBlob.data, { upsert: true, contentType: freshAtt.previewMime || 'image/jpeg' })
+          if (!previewUploadErr) {
+            await supabase!
+              .from('attachments')
+              .update({
+                media_status: 'ready',
+                preview_path: previewRemotePath,
+                preview_mime: freshAtt.previewMime ?? null,
+                width: freshAtt.width ?? null,
+                height: freshAtt.height ?? null,
+                duration: freshAtt.duration ?? null,
+              })
+              .eq('id', att.id)
+            await db.attachments.update(att.id, { previewPath: previewRemotePath })
+            queueLog('preview uploaded', att.id)
+          }
+        }
+      } catch (previewErr) {
+        queueLog('preview upload failed', att.id, previewErr)
+      }
+    }
+
     job.state = 'done'
     notify()
     queueLog('upload done', job.attachmentId)
@@ -135,6 +168,11 @@ async function runDownload(job: Job) {
     job.state = 'done'
     notify()
     queueLog('download done', job.attachmentId)
+
+    const att = await db.attachments.get(job.attachmentId)
+    if (att && needsProcessing(att)) {
+      void processAttachment(job.attachmentId)
+    }
   } catch (err) {
     queueLog('download failed', job.attachmentId, err)
     handleFailure(job)
