@@ -2,7 +2,7 @@ import { db } from '@/db/dropnote-db'
 import { needsProcessing } from './attachment-utils'
 import { processAttachment } from './media-processor'
 import { supabase, hasSupabaseEnv } from './supabase'
-import type { AttachmentJobState } from '@/types/note'
+import type { AttachmentJobState, Note } from '@/types/note'
 
 const MAX_CONCURRENT = 3
 const MAX_RETRIES = 3
@@ -30,6 +30,23 @@ function queueLog(...args: unknown[]) {
 
 function notify() {
   listeners.forEach((fn) => fn())
+}
+
+function noteToRemote(note: Note, userId: string) {
+  return {
+    id: note.id,
+    user_id: userId,
+    title: note.title,
+    content: note.content,
+    preview: note.preview,
+    pinned: note.pinned,
+    archived: note.archived,
+    tags: note.tags,
+    attachments_count: note.attachmentsCount ?? 0,
+    created_at: note.createdAt,
+    updated_at: note.updatedAt,
+    deleted_at: note.deletedAt,
+  }
 }
 
 export function getJobState(attachmentId: string): AttachmentJobState {
@@ -83,6 +100,17 @@ async function runUpload(job: Job) {
   try {
     const att = await db.attachments.get(job.attachmentId)
     if (!att) throw new Error('Attachment not found')
+    const note = await db.notes.get(att.noteId)
+    if (!note) throw new Error('Parent note not found')
+
+    if (job.userId) {
+      const { error: noteUpsertError } = await supabase!
+        .from('notes')
+        .upsert(noteToRemote(note, job.userId))
+      if (noteUpsertError) throw noteUpsertError
+      await db.notes.update(note.id, { userId: job.userId })
+      queueLog('ensured remote parent note', note.id, 'for attachment', att.id)
+    }
 
     let remotePath = att.remotePath
     if (!remotePath) {

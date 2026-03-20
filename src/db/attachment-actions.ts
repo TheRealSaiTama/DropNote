@@ -8,6 +8,7 @@ export async function addAttachment(noteId: string, file: File): Promise<Attachm
   const id = generateId()
   const storageKey = id
   const type = detectAttachmentType(file)
+  const ts = now()
 
   const attachment: Attachment = {
     id,
@@ -17,7 +18,7 @@ export async function addAttachment(noteId: string, file: File): Promise<Attachm
     mimeType: file.type || 'application/octet-stream',
     size: file.size,
     storageKey,
-    createdAt: now(),
+    createdAt: ts,
     deletedAt: null,
     syncStatus: 'pending' as const,
     originalMime: file.type || 'application/octet-stream',
@@ -32,6 +33,8 @@ export async function addAttachment(noteId: string, file: File): Promise<Attachm
       .equals(noteId)
       .modify((note) => {
         note.attachmentsCount = (note.attachmentsCount ?? 0) + 1
+        note.updatedAt = ts
+        note.syncStatus = 'pending'
       })
   })
 
