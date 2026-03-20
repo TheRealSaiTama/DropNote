@@ -1,5 +1,6 @@
 import { db } from '@/db/dropnote-db'
 import { supabase, hasSupabaseEnv } from './supabase'
+import { enqueueDownload } from './attachment-queue'
 import type { Attachment, Note, MediaStatus } from '@/types/note'
 
 export type SyncEngineStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline'
@@ -336,29 +337,27 @@ async function pullAttachments(userId: string) {
       }
 
       if (local) {
-        if (!r.remote_path) continue
-        const blobExists = await db.blobs.get(local.storageKey)
-        if (blobExists) continue
-
-        const { data: blobData, error: dlErr } = await supabase!.storage
-          .from('attachments')
-          .download(r.remote_path as string)
-        if (blobData && !dlErr) {
-          await db.blobs.put({ storageKey: local.storageKey, data: blobData })
-          syncLog('re-downloaded missing blob', r.id)
-        } else {
-          syncLog('blob re-download error', r.id, dlErr)
+        if (r.remote_path) {
+          const blobExists = await db.blobs.get(local.storageKey)
+          if (!blobExists) {
+            enqueueDownload(local.id, r.remote_path as string)
+            syncLog('queued missing blob download', r.id)
+          }
         }
+
         if (r.preview_path && !local.previewStorageKey) {
           const previewKey = local.id + '-preview'
-          const { data: previewData, error: prevErr } = await supabase!.storage
-            .from('attachments')
-            .download(r.preview_path as string)
-          if (previewData && !prevErr) {
-            await db.blobs.put({ storageKey: previewKey, data: previewData })
-            await db.attachments.update(local.id, { previewStorageKey: previewKey, previewPath: r.preview_path as string, previewMime: (r.preview_mime as string) ?? undefined, mediaStatus: 'ready', width: (r.width as number) ?? undefined, height: (r.height as number) ?? undefined, duration: (r.duration as number) ?? undefined })
-            syncLog('downloaded preview for existing', r.id)
-          }
+          enqueueDownload(previewKey, r.preview_path as string)
+          await db.attachments.update(local.id, {
+            previewStorageKey: previewKey,
+            previewPath: r.preview_path as string,
+            previewMime: (r.preview_mime as string) ?? undefined,
+            mediaStatus: 'ready',
+            width: (r.width as number) ?? undefined,
+            height: (r.height as number) ?? undefined,
+            duration: (r.duration as number) ?? undefined,
+          })
+          syncLog('queued preview download for existing', r.id)
         }
         continue
       }
@@ -367,26 +366,14 @@ async function pullAttachments(userId: string) {
       await db.attachments.add(att)
 
       if (r.remote_path) {
-        const { data: blobData, error: dlErr } = await supabase!.storage
-          .from('attachments')
-          .download(r.remote_path as string)
-        if (blobData && !dlErr) {
-          await db.blobs.put({ storageKey: att.storageKey, data: blobData })
-          syncLog('downloaded blob', r.id)
-        } else {
-          syncLog('blob download error', r.id, dlErr)
-        }
+        enqueueDownload(att.id, r.remote_path as string)
+        syncLog('queued blob download', r.id)
       }
       if (r.preview_path && att.mediaStatus === 'ready') {
         const previewKey = att.id + '-preview'
-        const { data: previewData, error: prevErr } = await supabase!.storage
-          .from('attachments')
-          .download(r.preview_path as string)
-        if (previewData && !prevErr) {
-          await db.blobs.put({ storageKey: previewKey, data: previewData })
-          await db.attachments.update(att.id, { previewStorageKey: previewKey })
-          syncLog('downloaded preview', r.id)
-        }
+        enqueueDownload(previewKey, r.preview_path as string)
+        await db.attachments.update(att.id, { previewStorageKey: previewKey })
+        syncLog('queued preview download', r.id)
       }
     } catch (err) {
       syncLog('[delete] pull attachment failure', r.id, err)
