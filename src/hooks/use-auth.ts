@@ -26,10 +26,13 @@ export function useAuth() {
 
   async function signIn(email: string) {
     if (!hasSupabaseEnv) return
-    await supabase!.auth.signInWithOtp({
+    const { error } = await supabase!.auth.signInWithOtp({
       email,
       options: { shouldCreateUser: true },
     })
+    if (error) {
+      throw error
+    }
   }
 
   async function signOut() {

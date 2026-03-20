@@ -16,6 +16,7 @@ export function AuthPanel({ user, onSignIn, onSignOut }: AuthPanelProps) {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   if (!hasSupabaseEnv) {
     return (
@@ -41,9 +42,22 @@ export function AuthPanel({ user, onSignIn, onSignOut }: AuthPanelProps) {
 
   if (sent) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Mail className="size-3.5" />
-        check your email
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Mail className="size-3.5" />
+          check your email
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setSent(false)
+            setErrorMessage(null)
+          }}
+          className="h-7 px-2 text-xs"
+        >
+          resend
+        </Button>
       </div>
     )
   }
@@ -52,9 +66,17 @@ export function AuthPanel({ user, onSignIn, onSignOut }: AuthPanelProps) {
     e.preventDefault()
     if (!email.trim()) return
     setLoading(true)
-    await onSignIn(email.trim())
-    setSent(true)
-    setLoading(false)
+    setErrorMessage(null)
+    try {
+      await onSignIn(email.trim())
+      setSent(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not send sign-in email'
+      setErrorMessage(message)
+      if (import.meta.env.DEV) console.error('[auth] sign-in email failed', message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -62,7 +84,10 @@ export function AuthPanel({ user, onSignIn, onSignOut }: AuthPanelProps) {
       <Input
         type="email"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={(e) => {
+          setEmail(e.target.value)
+          if (errorMessage) setErrorMessage(null)
+        }}
         placeholder="your@email.com"
         className="h-8 w-44 text-sm"
         required
@@ -71,6 +96,11 @@ export function AuthPanel({ user, onSignIn, onSignOut }: AuthPanelProps) {
         <LogIn />
         {loading ? '…' : 'sign in'}
       </Button>
+      {errorMessage && (
+        <span className="max-w-[18rem] truncate text-xs text-destructive" title={errorMessage}>
+          {errorMessage}
+        </span>
+      )}
     </form>
   )
 }
