@@ -13,6 +13,10 @@ interface AuthPanelProps {
 }
 
 export function AuthPanel({ user, onSignIn, onSignOut }: AuthPanelProps) {
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
+  const [loading, setLoading] = useState(false)
+
   if (!hasSupabaseEnv) {
     return (
       <span className="text-xs text-muted-foreground">
@@ -20,10 +24,6 @@ export function AuthPanel({ user, onSignIn, onSignOut }: AuthPanelProps) {
       </span>
     )
   }
-
-  const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
-  const [loading, setLoading] = useState(false)
 
   if (user) {
     return (

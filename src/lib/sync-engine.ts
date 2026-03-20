@@ -10,6 +10,31 @@ function syncLog(...args: unknown[]) {
   if (DEV) console.log('[sync]', ...args)
 }
 
+function arraysEqual(left: string[], right: string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+function noteSnapshotsEqual(local: Note, remote: Note) {
+  return (
+    local.title === remote.title
+    && local.content === remote.content
+    && local.preview === remote.preview
+    && local.pinned === remote.pinned
+    && local.archived === remote.archived
+    && local.attachmentsCount === remote.attachmentsCount
+    && local.deletedAt === remote.deletedAt
+    && arraysEqual(local.tags, remote.tags)
+  )
+}
+
+export function shouldApplyRemoteNote(local: Note, remote: Note): boolean {
+  if (local.syncStatus !== 'synced') {
+    return new Date(remote.updatedAt).getTime() > new Date(local.updatedAt).getTime()
+  }
+
+  return !noteSnapshotsEqual(local, remote) || remote.updatedAt !== local.updatedAt
+}
+
 let status: SyncEngineStatus = 'idle'
 const listeners = new Set<(s: SyncEngineStatus) => void>()
 let isSyncing = false
@@ -223,7 +248,7 @@ async function pullNotes(userId: string) {
   for (const r of data) {
     try {
       const local = await db.notes.get(r.id as string)
-      const remoteTime = new Date(r.updated_at as string).getTime()
+      const remote = remoteToNote(r)
 
       if (r.deleted_at) {
         syncLog('[delete] pull applied tombstone', r.id)
@@ -237,19 +262,20 @@ async function pullNotes(userId: string) {
       }
 
       if (!local) {
-        await db.notes.add(remoteToNote(r))
+        await db.notes.add(remote)
         continue
       }
 
-      if (remoteTime > new Date(local.updatedAt).getTime()) {
-        await db.notes.update(r.id as string, remoteToNote(r) as Partial<Note>)
+      if (shouldApplyRemoteNote(local, remote)) {
+        await db.notes.update(r.id as string, remote as Partial<Note>)
         if (DEV) syncLog('[diagnostic] pull reconciled note', r.id, {
-          remoteTime: r.updated_at,
+          remoteTime: remote.updatedAt,
           localTime: local.updatedAt,
-          remoteContent: String(r.content).slice(0, 40),
+          remoteContent: remote.content.slice(0, 40),
+          localSyncStatus: local.syncStatus,
         })
       }
-      // Local is newer or equal — local wins, will be pushed in pushNotes
+      // Pending local edits keep winning unless the remote note is clearly newer.
     } catch (err) {
       syncLog('[delete] pull note failure', r.id, err)
     }

@@ -3,6 +3,12 @@ import { isHeic, canBrowserPreviewImage } from './attachment-utils'
 import type { Attachment, MediaStatus } from '@/types/note'
 import { supabase, hasSupabaseEnv } from './supabase'
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string' && error) return error
+  return 'processing_error'
+}
+
 export function needsMediaProcessing(attachment: Attachment): boolean {
   if (attachment.mediaStatus === 'ready') return false
   if (isHeic(attachment.mimeType, attachment.name)) return true
@@ -79,11 +85,11 @@ export async function processAttachment(attachmentId: string): Promise<void> {
     }
 
     if (import.meta.env.DEV) console.log('[media] processed', attachmentId)
-  } catch (err: any) {
+  } catch (err) {
     if (import.meta.env.DEV) console.error('[media] failed', attachmentId, err)
     await db.attachments.update(attachmentId, {
       mediaStatus: 'failed',
-      errorCode: err?.message || 'processing_error',
+      errorCode: getErrorMessage(err),
     })
   }
 }

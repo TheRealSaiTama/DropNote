@@ -27,27 +27,39 @@ export function AppShell() {
   const notes = useNotesLive(activeFilter, searchValue)
   const selectedNote = useNote(selectedNoteId)
 
-  const { create, edit, remove, pin, archive, bulkRemove, bulkArchive } = useNoteActions()
+  const { create, edit, remove, pin, archive, bulkRemove, bulkArchive, flushPendingEdit } = useNoteActions()
   const { user, signIn, signOut } = useAuth()
-  const { status: syncStatus, syncNow, failedJobs } = useSyncStatus()
+  const { status: syncStatus, failedJobs } = useSyncStatus()
+
+  const runImmediateSync = useCallback(
+    async (reason: string, { restartRealtime = false }: { restartRealtime?: boolean } = {}) => {
+      if (!user) return
+      await flushPendingEdit()
+      if (restartRealtime) {
+        startRealtime(user.id)
+      }
+      if (DEV) console.log('[sync] immediate sync requested', reason, user.id)
+      await syncAll(user.id)
+    },
+    [flushPendingEdit, user],
+  )
 
   useEffect(() => {
     if (user) {
-      void syncAll(user.id)
-      startRealtime(user.id)
+      void runImmediateSync('session-start', { restartRealtime: true })
     } else {
       stopRealtime()
     }
     return () => stopRealtime()
-  }, [user])
+  }, [runImmediateSync, user])
 
   useEffect(() => {
     function handleOnline() {
-      if (user) void syncAll(user.id)
+      void runImmediateSync('online')
     }
     window.addEventListener('online', handleOnline)
     return () => window.removeEventListener('online', handleOnline)
-  }, [user])
+  }, [runImmediateSync])
 
   const selectedNoteIdRef = useRef<string | null>(selectedNoteId)
 
@@ -64,20 +76,23 @@ export function AppShell() {
           userId: user.id,
         })
       }
-      startRealtime(user.id)
-      void syncAll(user.id)
+      void runImmediateSync('foreground', { restartRealtime: true })
     }
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') handleForeground()
-    })
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        handleForeground()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleForeground)
     window.addEventListener('pageshow', handleForeground)
     return () => {
-      document.removeEventListener('visibilitychange', handleForeground)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleForeground)
       window.removeEventListener('pageshow', handleForeground)
     }
-  }, [user])
+  }, [runImmediateSync, user])
 
   const initRef = useRef(false)
   useEffect(() => {
@@ -115,7 +130,7 @@ export function AppShell() {
     setSelectedNoteId(null)
     if (user) {
       if (import.meta.env.DEV) console.log('[delete] immediate sync started for', noteId)
-      void syncAll(user.id)
+      void runImmediateSync(`note-delete:${noteId}`)
     }
   }
 
@@ -138,9 +153,9 @@ export function AppShell() {
   const handleAttachmentRemoved = useCallback((attachmentId: string) => {
     if (user) {
       if (import.meta.env.DEV) console.log('[delete] immediate attachment sync started for', attachmentId)
-      void syncAll(user.id)
+      void runImmediateSync(`attachment-delete:${attachmentId}`)
     }
-  }, [user])
+  }, [runImmediateSync, user])
 
   const handleToggleSelect = (noteId: string) => {
     setSelectedIds((prev) => {
@@ -165,7 +180,7 @@ export function AppShell() {
     setSelectedIds(new Set())
     if (user) {
       if (import.meta.env.DEV) console.log('[delete] immediate bulk sync started for', ids.length, 'notes')
-      void syncAll(user.id)
+      void runImmediateSync(`bulk-delete:${ids.length}`)
     }
   }
 
@@ -188,7 +203,7 @@ export function AppShell() {
         failedJobs={failedJobs}
         onSignIn={signIn}
         onSignOut={signOut}
-        onSyncNow={() => { if (user) syncNow(user.id) }}
+        onSyncNow={() => { if (user) void runImmediateSync('manual-sync') }}
       />
 
       <div className="flex flex-1 overflow-hidden">

@@ -1,7 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { db } from '@/db/dropnote-db'
 import { supabase, hasSupabaseEnv } from './supabase'
-import { remoteToNote, remoteToAtt, deleteLocalNote, deleteLocalAttachment } from './sync-engine'
+import { remoteToNote, remoteToAtt, deleteLocalNote, deleteLocalAttachment, shouldApplyRemoteNote } from './sync-engine'
 import { enqueueDownload } from './attachment-queue'
 import type { Note } from '@/types/note'
 
@@ -85,16 +85,14 @@ async function handleNoteChange(payload: Record<string, unknown>) {
       return
     }
 
-    const remoteTime = new Date(remote.updatedAt).getTime()
-    const localTime = new Date(local.updatedAt).getTime()
-
-    if (remoteTime <= localTime) return
+    if (!shouldApplyRemoteNote(local, remote)) return
 
     await db.notes.update(remote.id, remote as Partial<Note>)
     rtLog('[diagnostic] realtime reconciled note', remote.id, {
       remoteTime: remote.updatedAt,
       localTime: local.updatedAt,
       remoteContent: remote.content?.slice(0, 40),
+      localSyncStatus: local.syncStatus,
     })
   } catch (err) {
     rtLog('[delete] error handling note change', err)
