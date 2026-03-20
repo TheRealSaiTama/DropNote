@@ -111,7 +111,18 @@ export function AppShell() {
     changes: Pick<Note, 'title' | 'content'>,
     onSaved?: (changes: Pick<Note, 'title' | 'content'>) => void,
   ) => {
-    edit(noteId, changes, onSaved)
+    edit(noteId, changes, (savedChanges) => {
+      onSaved?.(savedChanges)
+      if (user) {
+        if (DEV) {
+          console.log('[sync] immediate note save sync started', noteId, {
+            title: savedChanges.title.slice(0, 40),
+            contentLen: savedChanges.content.length,
+          })
+        }
+        void runImmediateSync(`note-save:${noteId}`)
+      }
+    })
     if (user) scheduleSyncDebounced(user.id)
   }
 
