@@ -1,7 +1,7 @@
 import { db } from '@/db/dropnote-db'
 import { supabase, hasSupabaseEnv } from './supabase'
 import { enqueueDownload } from './attachment-queue'
-import type { Attachment, Note, MediaStatus } from '@/types/note'
+import type { Attachment, Folder, Note, MediaStatus } from '@/types/note'
 
 export type SyncEngineStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline'
 
@@ -24,6 +24,7 @@ function noteSnapshotsEqual(local: Note, remote: Note) {
     && local.archived === remote.archived
     && local.attachmentsCount === remote.attachmentsCount
     && local.deletedAt === remote.deletedAt
+    && local.folderId === remote.folderId
     && arraysEqual(local.tags, remote.tags)
   )
 }
@@ -136,6 +137,7 @@ function noteToRemote(note: Note, userId: string) {
     pinned: note.pinned,
     archived: note.archived,
     tags: note.tags,
+    folder_id: note.folderId ?? null,
     attachments_count: note.attachmentsCount ?? 0,
     created_at: note.createdAt,
     updated_at: note.updatedAt,
@@ -153,12 +155,44 @@ export function remoteToNote(r: Record<string, unknown>): Note {
     pinned: r.pinned as boolean,
     archived: r.archived as boolean,
     tags: r.tags as string[],
+    folderId: (r.folder_id as string) ?? null,
     attachmentsCount: (r.attachments_count as number) ?? 0,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
     deletedAt: (r.deleted_at as string) ?? null,
     syncStatus: 'synced',
   }
+}
+
+function folderToRemote(folder: Folder, userId: string) {
+  return {
+    id: folder.id,
+    user_id: userId,
+    name: folder.name,
+    created_at: folder.createdAt,
+    updated_at: folder.updatedAt,
+    deleted_at: folder.deletedAt,
+  }
+}
+
+export function remoteToFolder(r: Record<string, unknown>): Folder {
+  return {
+    id: r.id as string,
+    userId: r.user_id as string,
+    name: r.name as string,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+    deletedAt: (r.deleted_at as string) ?? null,
+    syncStatus: 'synced',
+  }
+}
+
+export function shouldApplyRemoteFolder(local: Folder | undefined, remote: Folder): boolean {
+  if (!local) return true
+  if (local.syncStatus !== 'synced') {
+    return new Date(remote.updatedAt).getTime() > new Date(local.updatedAt).getTime()
+  }
+  return local.name !== remote.name || local.deletedAt !== remote.deletedAt || remote.updatedAt !== local.updatedAt
 }
 
 function attToRemote(att: Attachment, userId: string) {
@@ -219,6 +253,81 @@ export async function deleteLocalAttachment(attachmentId: string) {
   await db.blobs.delete(attachmentId)
   await db.blobs.delete(`${attachmentId}-preview`)
   await db.attachments.delete(attachmentId)
+}
+
+export async function deleteLocalFolder(folderId: string) {
+  const ts = new Date().toISOString()
+  await db.transaction('rw', db.folders, db.notes, async () => {
+    await db.notes.where('folderId').equals(folderId).modify({
+      folderId: null,
+      updatedAt: ts,
+      syncStatus: 'pending' as const,
+    })
+    await db.folders.delete(folderId)
+  })
+}
+
+async function pullFolders(userId: string) {
+  const { data, error } = await supabase!.from('folders').select('*').eq('user_id', userId)
+  if (error || !data) {
+    syncLog('pullFolders error', error)
+    return
+  }
+  syncLog('pulling folders', data.length)
+
+  for (const r of data) {
+    try {
+      const local = await db.folders.get(r.id as string)
+      const remote = remoteToFolder(r)
+
+      if (r.deleted_at) {
+        if (local) {
+          await deleteLocalFolder(r.id as string)
+        }
+        continue
+      }
+
+      if (!local) {
+        await db.folders.add(remote)
+        continue
+      }
+
+      if (shouldApplyRemoteFolder(local, remote)) {
+        await db.folders.update(r.id as string, remote as Partial<Folder>)
+      }
+    } catch (err) {
+      syncLog('pull folder failure', r.id, err)
+    }
+  }
+}
+
+async function pushFolders(userId: string) {
+  const pending = await db.folders.filter((f) => f.syncStatus !== 'synced').toArray()
+  syncLog('pushing folders', pending.length)
+
+  for (const folder of pending) {
+    try {
+      if (folder.deletedAt) {
+        syncLog('[delete] pushing tombstone folder', folder.id)
+      }
+      const { error } = await supabase!.from('folders').upsert(folderToRemote(folder, userId))
+      if (error) {
+        if (folder.deletedAt) syncLog('[delete] remote folder tombstone push failed', folder.id, error)
+        else syncLog('push folder error', folder.id, error)
+        continue
+      }
+
+      if (folder.deletedAt) {
+        await deleteLocalFolder(folder.id)
+        syncLog('[delete] remote folder tombstone pushed', folder.id)
+      } else {
+        await db.folders.update(folder.id, { syncStatus: 'synced', userId })
+      }
+    } catch (err) {
+      if (folder.deletedAt) syncLog('[delete] push tombstone folder failure', folder.id, err)
+      else syncLog('error pushing folder', folder.id, err)
+    }
+  }
 }
 
 async function cleanupRemoteAttachmentsForNote(noteId: string) {
@@ -502,8 +611,10 @@ export async function syncAll(userId: string): Promise<void> {
 
   try {
     await cleanupLegacySeeds(userId)
+    await pullFolders(userId)
     await pullNotes(userId)
     await pushNotes(userId)
+    await pushFolders(userId)
     await pullAttachments(userId)
     await pushAttachments(userId)
     setStatus('synced')

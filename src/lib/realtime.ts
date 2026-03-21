@@ -1,9 +1,18 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { db } from '@/db/dropnote-db'
 import { supabase, hasSupabaseEnv } from './supabase'
-import { remoteToNote, remoteToAtt, deleteLocalNote, deleteLocalAttachment, shouldApplyRemoteNote } from './sync-engine'
+import {
+  remoteToNote,
+  remoteToAtt,
+  remoteToFolder,
+  deleteLocalNote,
+  deleteLocalFolder,
+  deleteLocalAttachment,
+  shouldApplyRemoteNote,
+  shouldApplyRemoteFolder,
+} from './sync-engine'
 import { enqueueDownload } from './attachment-queue'
-import type { Note } from '@/types/note'
+import type { Folder, Note } from '@/types/note'
 
 function rtLog(...args: unknown[]) {
   if (import.meta.env.DEV) {
@@ -38,6 +47,11 @@ export function startRealtime(userId: string): void {
       { event: '*', schema: 'public', table: 'attachments', filter: `user_id=eq.${userId}` },
       handleAttachmentChange,
     )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'folders', filter: `user_id=eq.${userId}` },
+      handleFolderChange,
+    )
     .subscribe()
 
   rtLog('subscribed for', userId)
@@ -47,6 +61,44 @@ export function stopRealtime(): void {
   if (channel) {
     supabase?.removeChannel(channel)
     channel = null
+  }
+}
+
+async function handleFolderChange(payload: Record<string, unknown>) {
+  const eventType = String(payload.eventType ?? '')
+  const r = getPayloadRecord(payload)
+  if (!r || !r.id) return
+
+  rtLog(eventType, 'folder', r.id)
+
+  try {
+    const remote = remoteToFolder(r)
+    const local = await db.folders.get(remote.id)
+
+    if (eventType === 'DELETE') {
+      if (local) {
+        await deleteLocalFolder(remote.id)
+        rtLog('realtime folder hard delete', remote.id)
+      }
+      return
+    }
+
+    if (remote.deletedAt) {
+      rtLog('realtime folder tombstone', remote.id)
+      if (local) await deleteLocalFolder(remote.id)
+      return
+    }
+
+    if (!local) {
+      await db.folders.add(remote)
+      return
+    }
+
+    if (!shouldApplyRemoteFolder(local, remote)) return
+
+    await db.folders.update(remote.id, remote as Partial<Folder>)
+  } catch (err) {
+    rtLog('error handling folder change', err)
   }
 }
 

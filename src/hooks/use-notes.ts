@@ -2,9 +2,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from '@/db/dropnote-db'
 import { stripHtml } from '@/lib/note-html'
-import type { Note, NoteFilter } from '@/types/note'
+import type { FolderScope, Note, NoteFilter } from '@/types/note'
 
-export function useNotesLive(filter: NoteFilter, searchQuery: string): Note[] {
+export function useNotesLive(filter: NoteFilter, searchQuery: string, folderScope: FolderScope): Note[] {
   const notes = useLiveQuery(async () => {
     const all = await db.notes.toArray()
     const normalized = searchQuery.trim().toLowerCase()
@@ -15,6 +15,12 @@ export function useNotesLive(filter: NoteFilter, searchQuery: string): Note[] {
       if (filter === 'archived') return note.archived
       return !note.archived
     })
+
+    if (folderScope === 'unfiled') {
+      filtered = filtered.filter((n) => !n.folderId)
+    } else if (folderScope !== 'all') {
+      filtered = filtered.filter((n) => n.folderId === folderScope)
+    }
 
     if (normalized) {
       filtered = filtered.filter((note) => {
@@ -29,7 +35,7 @@ export function useNotesLive(filter: NoteFilter, searchQuery: string): Note[] {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     })
-  }, [filter, searchQuery])
+  }, [filter, searchQuery, folderScope])
 
   return notes ?? []
 }

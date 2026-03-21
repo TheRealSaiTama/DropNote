@@ -4,13 +4,14 @@ import { seedDatabase } from '@/data/seed-data'
 import { useAuth } from '@/hooks/use-auth'
 import { useNote } from '@/hooks/use-note'
 import { useNoteActions } from '@/hooks/use-note-actions'
+import { useFoldersLive } from '@/hooks/use-folders'
 import { useNotesLive } from '@/hooks/use-notes'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useSyncStatus } from '@/hooks/use-sync-status'
 import { enqueueUpload } from '@/lib/attachment-queue'
 import { startRealtime, stopRealtime } from '@/lib/realtime'
 import { scheduleSyncDebounced, syncAll } from '@/lib/sync-engine'
-import type { Note, NoteFilter } from '@/types/note'
+import type { FolderScope, Note, NoteFilter } from '@/types/note'
 
 import { NoteEditorPane } from './note-editor-pane'
 import { NotesListPane } from './notes-list-pane'
@@ -22,12 +23,27 @@ export function AppShell() {
   const [activeFilter, setActiveFilter] = useLocalStorage<NoteFilter>('dropnote.active-filter', 'all')
   const [searchValue, setSearchValue] = useLocalStorage('dropnote.search-value', '')
   const [selectedNoteId, setSelectedNoteId] = useLocalStorage<string | null>('dropnote.selected-note-id', null)
+  const [folderScope, setFolderScope] = useLocalStorage<FolderScope>('dropnote.folder-scope', 'all')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const notes = useNotesLive(activeFilter, searchValue)
+  const folders = useFoldersLive()
+  const notes = useNotesLive(activeFilter, searchValue, folderScope)
   const selectedNote = useNote(selectedNoteId)
 
-  const { create, edit, remove, pin, archive, bulkRemove, bulkArchive, flushPendingEdit } = useNoteActions()
+  const {
+    create,
+    edit,
+    remove,
+    pin,
+    archive,
+    bulkRemove,
+    bulkArchive,
+    flushPendingEdit,
+    setNoteFolder,
+    addFolder,
+    removeFolder,
+    renameFolder,
+  } = useNoteActions()
   const { user, signIn, signOut } = useAuth()
   const { status: syncStatus, failedJobs } = useSyncStatus()
 
@@ -101,8 +117,15 @@ export function AppShell() {
     void seedDatabase()
   }, [])
 
+  useEffect(() => {
+    if (folderScope === 'all' || folderScope === 'unfiled') return
+    const exists = folders.some((f) => f.id === folderScope)
+    if (!exists) setFolderScope('all')
+  }, [folderScope, folders, setFolderScope])
+
   const handleCreateNote = async () => {
-    const note = await create()
+    const fid = folderScope === 'all' || folderScope === 'unfiled' ? null : folderScope
+    const note = await create({ folderId: fid })
     setSelectedNoteId(note.id)
   }
 
@@ -147,10 +170,35 @@ export function AppShell() {
 
   const handleEnsureNote = useCallback(async (): Promise<string> => {
     if (selectedNoteId) return selectedNoteId
-    const note = await create()
+    const fid = folderScope === 'all' || folderScope === 'unfiled' ? null : folderScope
+    const note = await create({ folderId: fid })
     setSelectedNoteId(note.id)
     return note.id
-  }, [selectedNoteId, create, setSelectedNoteId])
+  }, [selectedNoteId, create, setSelectedNoteId, folderScope])
+
+  const handleMoveNoteToFolder = async (noteId: string, folderId: string | null) => {
+    await setNoteFolder(noteId, folderId)
+    if (user) scheduleSyncDebounced(user.id)
+  }
+
+  const handleCreateFolder = async (name: string) => {
+    const f = await addFolder(name)
+    if (user) scheduleSyncDebounced(user.id)
+    return f
+  }
+
+  const handleRemoveFolder = async (folderId: string) => {
+    const ok = window.confirm('Delete this folder? Notes inside stay in your library without a folder.')
+    if (!ok) return
+    await removeFolder(folderId)
+    if (folderScope === folderId) setFolderScope('all')
+    if (user) void runImmediateSync('folder-delete')
+  }
+
+  const handleRenameFolder = async (folderId: string, name: string) => {
+    await renameFolder(folderId, name)
+    if (user) scheduleSyncDebounced(user.id)
+  }
 
   const handleBack = () => setSelectedNoteId(null)
 
@@ -221,6 +269,12 @@ export function AppShell() {
         <aside className={`${selectedNoteId ? 'hidden' : ''} flex-1 overflow-y-auto p-4 lg:block lg:w-[24rem] lg:flex-none lg:border-r`}>
           <NotesListPane
             notes={notes}
+            folders={folders}
+            folderScope={folderScope}
+            onFolderScopeChange={setFolderScope}
+            onCreateFolder={handleCreateFolder}
+            onDeleteFolder={handleRemoveFolder}
+            onRenameFolder={handleRenameFolder}
             selectedNoteId={selectedNoteId}
             activeFilter={activeFilter}
             onFilterChange={setActiveFilter}
@@ -238,6 +292,8 @@ export function AppShell() {
           <NoteEditorPane
             key={selectedNote?.id ?? 'none'}
             note={selectedNote}
+            folders={folders}
+            onMoveToFolder={handleMoveNoteToFolder}
             onUpdateNote={handleEditNote}
             onTogglePinned={handlePin}
             onToggleArchived={handleArchive}

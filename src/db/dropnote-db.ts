@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 
-import type { Attachment, Note } from '@/types/note'
+import type { Attachment, Folder, Note } from '@/types/note'
 
 export interface AttachmentBlob {
   storageKey: string
@@ -14,6 +14,7 @@ export interface AppMeta {
 
 class DropnoteDB extends Dexie {
   notes!: Table<Note, string>
+  folders!: Table<Folder, string>
   attachments!: Table<Attachment, string>
   blobs!: Table<AttachmentBlob, string>
   meta!: Table<AppMeta, string>
@@ -40,6 +41,21 @@ class DropnoteDB extends Dexie {
     this.version(6).stores({
       attachments: 'id, noteId, type, name, createdAt, syncStatus, deletedAt, mediaStatus',
     })
+    this.version(7)
+      .stores({
+        folders: 'id, name, updatedAt, deletedAt, syncStatus',
+        notes: 'id, title, pinned, archived, updatedAt, createdAt, *tags, syncStatus, folderId',
+      })
+      .upgrade((tx) => {
+        return tx
+          .table('notes')
+          .toCollection()
+          .modify((note: Note) => {
+            if (note.folderId === undefined) {
+              note.folderId = null
+            }
+          })
+      })
   }
 }
 
@@ -47,6 +63,7 @@ export const db = new DropnoteDB()
 
 export async function resetDatabase() {
   await db.notes.clear()
+  await db.folders.clear()
   await db.attachments.clear()
   await db.blobs.clear()
   await db.meta.clear()

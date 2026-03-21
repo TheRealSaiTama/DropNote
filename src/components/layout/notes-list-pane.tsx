@@ -1,11 +1,18 @@
 import { useState } from 'react'
-import { Archive, ArchiveRestore, CheckSquare, Paperclip, Pin, Plus, StickyNote, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, CheckSquare, Folder as FolderIcon, FolderPlus, Paperclip, Pin, Plus, StickyNote, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import type { Note, NoteFilter } from '@/types/note'
+import { Input } from '@/components/ui/input'
+import type { Folder as FolderRecord, FolderScope, Note, NoteFilter } from '@/types/note'
 
 interface NotesListPaneProps {
   notes: Note[]
+  folders: FolderRecord[]
+  folderScope: FolderScope
+  onFolderScopeChange: (scope: FolderScope) => void
+  onCreateFolder: (name: string) => Promise<FolderRecord>
+  onDeleteFolder: (folderId: string) => void | Promise<void>
+  onRenameFolder: (folderId: string, name: string) => void | Promise<void>
   selectedNoteId: string | null
   activeFilter: NoteFilter
   onFilterChange: (value: NoteFilter) => void
@@ -33,6 +40,12 @@ function timeAgo(dateStr: string): string {
 
 export function NotesListPane({
   notes,
+  folders,
+  folderScope,
+  onFolderScopeChange,
+  onCreateFolder,
+  onDeleteFolder,
+  onRenameFolder,
   selectedNoteId,
   activeFilter,
   onFilterChange,
@@ -46,6 +59,8 @@ export function NotesListPane({
   onBulkArchive,
 }: NotesListPaneProps) {
   const [selectMode, setSelectMode] = useState(false)
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
   const selecting = selectMode || selectedIds.size > 0
 
   function handleDone() {
@@ -53,8 +68,112 @@ export function NotesListPane({
     setSelectMode(false)
   }
 
+  async function submitNewFolder() {
+    const name = newFolderName.trim()
+    if (!name) return
+    try {
+      const f = await onCreateFolder(name)
+      setNewFolderName('')
+      setNewFolderOpen(false)
+      onFolderScopeChange(f.id)
+    } catch {
+      setNewFolderName('')
+    }
+  }
+
+  function startRename(folder: FolderRecord) {
+    const next = window.prompt('Rename folder', folder.name)
+    if (next === null) return
+    const trimmed = next.trim()
+    if (!trimmed || trimmed === folder.name) return
+    void onRenameFolder(folder.id, trimmed)
+  }
+
   return (
     <div className="space-y-3">
+      <div className="rounded-xl border border-line/60 bg-surface-strong/50 p-2">
+        <p className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <FolderIcon className="size-3" />
+          Folders
+        </p>
+        <div className="flex flex-wrap gap-1">
+          <Button
+            type="button"
+            variant={folderScope === 'all' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-8 rounded-lg text-xs"
+            onClick={() => onFolderScopeChange('all')}
+          >
+            All
+          </Button>
+          <Button
+            type="button"
+            variant={folderScope === 'unfiled' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-8 rounded-lg text-xs"
+            onClick={() => onFolderScopeChange('unfiled')}
+          >
+            No folder
+          </Button>
+          {folders.map((f) => (
+            <div key={f.id} className="group flex items-center gap-0.5">
+              <Button
+                type="button"
+                variant={folderScope === f.id ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 max-w-[9rem] rounded-lg text-xs"
+                onClick={() => onFolderScopeChange(f.id)}
+                onDoubleClick={() => startRename(f)}
+                title="Double-click to rename"
+              >
+                <span className="truncate">{f.name}</span>
+              </Button>
+              <button
+                type="button"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                aria-label={`Delete folder ${f.name}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void onDeleteFolder(f.id)
+                }}
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+        {newFolderOpen ? (
+          <div className="mt-2 flex gap-1.5 px-0.5">
+            <Input
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Folder name"
+              className="h-9 flex-1 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void submitNewFolder()
+                if (e.key === 'Escape') {
+                  setNewFolderOpen(false)
+                  setNewFolderName('')
+                }
+              }}
+              autoFocus
+            />
+            <Button type="button" size="sm" className="h-9 shrink-0" onClick={() => void submitNewFolder()}>
+              Add
+            </Button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setNewFolderOpen(true)}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-line/70 py-2 text-xs text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
+          >
+            <FolderPlus className="size-3.5" />
+            New folder
+          </button>
+        )}
+      </div>
+
       <div className="flex gap-1">
         {(['all', 'pinned', 'archived'] as const).map((filter) => (
           <Button
@@ -119,7 +238,7 @@ export function NotesListPane({
 
       {notes.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <p className="text-sm text-muted-foreground">No notes yet</p>
+          <p className="text-sm text-muted-foreground">No notes here</p>
           <Button size="sm" onClick={onCreateNote}>
             <Plus className="size-4" />
             New note

@@ -10,6 +10,7 @@ import {
   bulkDeleteNotes,
   bulkArchiveNotes,
 } from '@/db/note-actions'
+import { createFolder, deleteFolder, renameFolder as renameFolderInDb } from '@/db/folder-actions'
 import type { Note } from '@/types/note'
 
 const AUTOSAVE_DELAY_MS = 600
@@ -61,8 +62,8 @@ export function useNoteActions() {
     [],
   )
 
-  const create = useCallback(async (): Promise<Note> => {
-    return createNote()
+  const create = useCallback(async (opts?: { folderId?: string | null }): Promise<Note> => {
+    return createNote({ folderId: opts?.folderId ?? null })
   }, [])
 
   const edit = useCallback(
@@ -110,6 +111,20 @@ export function useNoteActions() {
     await bulkArchiveNotes(noteIds, archived)
   }, [])
 
+  const setNoteFolder = useCallback(
+    async (noteId: string, folderId: string | null) => {
+      await flushPendingEdit()
+      await updateNote(noteId, { folderId })
+    },
+    [flushPendingEdit],
+  )
+
+  const addFolder = useCallback(async (name: string) => createFolder(name), [])
+
+  const removeFolder = useCallback(async (folderId: string) => deleteFolder(folderId), [])
+
+  const renameFolder = useCallback(async (folderId: string, name: string) => renameFolderInDb(folderId, name), [])
+
   return {
     create,
     edit,
@@ -120,5 +135,9 @@ export function useNoteActions() {
     bulkRemove,
     bulkArchive,
     flushPendingEdit,
+    setNoteFolder,
+    addFolder,
+    removeFolder,
+    renameFolder,
   }
 }

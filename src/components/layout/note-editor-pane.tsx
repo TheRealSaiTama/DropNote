@@ -7,7 +7,7 @@ import { useFileDrop } from '@/hooks/use-file-drop'
 import { useNoteAttachments } from '@/hooks/use-note-attachments'
 import { usePasteAttachments } from '@/hooks/use-paste-attachments'
 import { MAX_FILE_SIZE_BYTES, formatFileSize } from '@/lib/attachment-utils'
-import type { Note } from '@/types/note'
+import type { Folder, Note } from '@/types/note'
 
 import { AttachmentPreview } from './attachment-preview'
 import { NoteRichEditor } from './note-rich-editor'
@@ -16,6 +16,8 @@ const DEV = import.meta.env.DEV
 
 interface NoteEditorPaneProps {
   note: Note | null | undefined
+  folders: Folder[]
+  onMoveToFolder: (noteId: string, folderId: string | null) => void | Promise<void>
   onUpdateNote: (
     noteId: string,
     changes: Pick<Note, 'title' | 'content'>,
@@ -30,7 +32,7 @@ interface NoteEditorPaneProps {
   onAttachmentRemoved?: (attachmentId: string) => void
 }
 
-export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArchived, onDeleteNote, onEnsureNote, onBack, onAttachmentAdded, onAttachmentRemoved }: NoteEditorPaneProps) {
+export function NoteEditorPane({ note, folders, onMoveToFolder, onUpdateNote, onTogglePinned, onToggleArchived, onDeleteNote, onEnsureNote, onBack, onAttachmentAdded, onAttachmentRemoved }: NoteEditorPaneProps) {
   const [localTitle, setLocalTitle] = useState(() => note?.title ?? '')
   const [localContent, setLocalContent] = useState(() => note?.content ?? '')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -173,7 +175,28 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
       </div>
 
       <div className="note-canvas-shell mt-3 flex min-h-0 flex-1 flex-col">
-        <div className="note-canvas-title-wrap">
+        <div className="note-canvas-title-wrap space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="note-folder" className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Folder
+            </label>
+            <select
+              id="note-folder"
+              value={note.folderId ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                void onMoveToFolder(note.id, v === '' ? null : v)
+              }}
+              className="min-w-[8rem] max-w-full flex-1 rounded-lg border border-line/60 bg-surface-strong/70 px-2 py-1.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">No folder</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <input
             type="text"
             value={localTitle}

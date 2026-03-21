@@ -28,6 +28,7 @@ export async function createNote(overrides?: Partial<Note>): Promise<Note> {
     pinned: false,
     archived: false,
     tags: [],
+    folderId: null,
     attachmentsCount: 0,
     deletedAt: null,
     syncStatus: 'pending',
@@ -40,7 +41,7 @@ export async function createNote(overrides?: Partial<Note>): Promise<Note> {
 
 export async function updateNote(
   noteId: string,
-  changes: Partial<Pick<Note, 'title' | 'content' | 'pinned' | 'archived' | 'tags'>>,
+  changes: Partial<Pick<Note, 'title' | 'content' | 'pinned' | 'archived' | 'tags' | 'folderId'>>,
 ): Promise<void> {
   const update: Partial<Note> = {
     updatedAt: now(),

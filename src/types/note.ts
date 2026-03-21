@@ -27,6 +27,16 @@ export interface Attachment {
   errorCode?: string
 }
 
+export interface Folder {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+  userId?: string
+  syncStatus: SyncStatus
+}
+
 export interface Note {
   id: string
   title: string
@@ -37,6 +47,7 @@ export interface Note {
   pinned: boolean
   archived: boolean
   tags: string[]
+  folderId: string | null
   attachmentsCount: number
   deletedAt: string | null
   userId?: string
@@ -45,6 +56,8 @@ export interface Note {
 }
 
 export type NoteFilter = 'all' | 'pinned' | 'archived'
+
+export type FolderScope = 'all' | 'unfiled' | string
 
 export interface NoteWithAttachments extends Note {
   attachments: Attachment[]
