@@ -102,6 +102,29 @@ button {
   opacity: 0.55;
 }
 
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  transition: all 120ms ease;
+}
+
+.folder-row:hover {
+  background: color-mix(in oklab, var(--surface-strong) 60%, transparent);
+  color: var(--foreground);
+}
+
+.folder-row-active {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
 .note-canvas-shell {
   border-radius: var(--radius-md);
   border: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);

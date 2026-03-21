@@ -275,6 +275,7 @@ export function AppShell() {
             onCreateFolder={handleCreateFolder}
             onDeleteFolder={handleRemoveFolder}
             onRenameFolder={handleRenameFolder}
+            onMoveToFolder={handleMoveNoteToFolder}
             selectedNoteId={selectedNoteId}
             activeFilter={activeFilter}
             onFilterChange={setActiveFilter}

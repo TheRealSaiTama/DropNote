@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
-import { Archive, ArrowLeft, Paperclip, Pin, Trash2 } from 'lucide-react'
+import { Archive, ArrowLeft, FolderClosed, Paperclip, Pin, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { addAttachment, removeAttachment } from '@/db/attachment-actions'
@@ -176,27 +176,6 @@ export function NoteEditorPane({ note, folders, onMoveToFolder, onUpdateNote, on
 
       <div className="note-canvas-shell mt-3 flex min-h-0 flex-1 flex-col">
         <div className="note-canvas-title-wrap space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="note-folder" className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Folder
-            </label>
-            <select
-              id="note-folder"
-              value={note.folderId ?? ''}
-              onChange={(e) => {
-                const v = e.target.value
-                void onMoveToFolder(note.id, v === '' ? null : v)
-              }}
-              className="min-w-[8rem] max-w-full flex-1 rounded-lg border border-line/60 bg-surface-strong/70 px-2 py-1.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">No folder</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <input
             type="text"
             value={localTitle}
@@ -205,6 +184,22 @@ export function NoteEditorPane({ note, folders, onMoveToFolder, onUpdateNote, on
             className="note-title-field placeholder:text-muted-foreground/50"
             aria-label="Note title"
           />
+          <div className="flex items-center gap-1.5">
+            <FolderClosed className="size-3 text-muted-foreground/60" />
+            <select
+              value={note.folderId ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                void onMoveToFolder(note.id, v === '' ? null : v)
+              }}
+              className="rounded-md bg-transparent px-1 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">No folder</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="note-canvas-ruled flex min-h-0 flex-1 flex-col">
           <NoteRichEditor value={localContent} onChange={handleContentChange} placeholder="Start writing…" />
