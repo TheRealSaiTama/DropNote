@@ -234,7 +234,7 @@ export function AppShell() {
             onBulkArchive={handleBulkArchive}
           />
         </aside>
-        <main className={`${!selectedNoteId ? 'hidden' : ''} flex-1 overflow-y-auto px-5 py-4 lg:block lg:px-10 lg:py-6`}>
+        <main className={`${!selectedNoteId ? 'hidden' : ''} flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4 lg:block lg:px-10 lg:py-6`}>
           <NoteEditorPane
             key={selectedNote?.id ?? 'none'}
             note={selectedNote}

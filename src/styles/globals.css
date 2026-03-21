@@ -19,6 +19,10 @@
   --shadow-soft: 0 24px 70px rgba(15, 15, 15, 0.08);
   --shadow-panel: 0 16px 36px rgba(15, 15, 15, 0.07);
   --radius: 1.75rem;
+  --note-line-height: 1.75rem;
+  --note-rail: rgba(220, 90, 90, 0.22);
+  --note-line-a: color-mix(in oklab, #6366f1 22%, transparent);
+  --note-line-b: color-mix(in oklab, #ec4899 18%, transparent);
 }
 
 @theme inline {
@@ -96,4 +100,155 @@ button {
   background-size: auto, 16px 16px, 18px 18px;
   border-radius: inherit;
   opacity: 0.55;
+}
+
+.note-canvas-shell {
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+  background: color-mix(in oklab, var(--surface-elevated) 88%, #fff 12%);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.note-canvas-title-wrap {
+  padding: 1rem 1.25rem 0.65rem 1.75rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--foreground) 6%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, #fff 40%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+.note-canvas-ruled {
+  position: relative;
+  padding: 0.75rem 1rem 1.1rem 2.25rem;
+  background-color: color-mix(in oklab, #fff 25%, var(--background));
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--note-line-height) - 1px),
+      var(--note-line-a) calc(var(--note-line-height) - 1px),
+      var(--note-line-a) var(--note-line-height),
+      transparent var(--note-line-height),
+      transparent calc(var(--note-line-height) * 2 - 1px),
+      var(--note-line-b) calc(var(--note-line-height) * 2 - 1px),
+      var(--note-line-b) calc(var(--note-line-height) * 2)
+    ),
+    linear-gradient(90deg, var(--note-rail) 0, var(--note-rail) 2px, transparent 2px);
+  background-size:
+    100% calc(var(--note-line-height) * 2),
+    100% 100%;
+  background-position: 0 0, 1.25rem 0;
+}
+
+.note-title-field {
+  display: block;
+  width: 100%;
+  font-family: var(--font-serif);
+  font-size: clamp(1.35rem, 2.8vw, 1.85rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  border: none;
+  background: transparent;
+  outline: none;
+  background-image: linear-gradient(
+    105deg,
+    var(--foreground) 0%,
+    color-mix(in oklab, #6366f1 38%, var(--foreground)) 52%,
+    color-mix(in oklab, #db2777 32%, var(--foreground)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.note-title-field::placeholder {
+  background: none;
+  -webkit-text-fill-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+}
+
+.note-body-stack {
+  position: relative;
+  min-height: min(60vh, 28rem);
+}
+
+.note-body-mirror {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  scrollbar-width: none;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 0.875rem;
+  line-height: var(--note-line-height);
+  font-family: var(--font-sans);
+  tab-size: 2;
+}
+
+.note-body-mirror::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.note-body-mirror .note-hl-plain,
+.note-body-mirror .note-hl-done,
+.note-body-mirror .note-hl-open {
+  display: block;
+  min-height: var(--note-line-height);
+}
+
+.note-hl-plain {
+  color: var(--foreground);
+}
+
+.note-hl-open {
+  color: color-mix(in oklab, var(--foreground) 88%, #6366f1 12%);
+  box-shadow: inset 3px 0 0 0 color-mix(in oklab, #6366f1 42%, transparent);
+  padding-left: 0.4rem;
+  margin-left: -0.4rem;
+  border-radius: 0.2rem;
+}
+
+.note-hl-done {
+  color: color-mix(in oklab, var(--muted-foreground) 35%, #15803d 65%);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklab, #15803d 45%, transparent);
+}
+
+.note-body-editor {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 0.875rem;
+  line-height: var(--note-line-height);
+  outline: none;
+  overflow: auto;
+}
+
+.note-body-editor::placeholder {
+  color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+}
+
+.note-body-editor::selection {
+  background: color-mix(in oklab, var(--foreground) 18%, transparent);
+  color: var(--foreground);
 }
