@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from '@/db/dropnote-db'
+import { stripHtml } from '@/lib/note-html'
 import type { Note, NoteFilter } from '@/types/note'
 
 export function useNotesLive(filter: NoteFilter, searchQuery: string): Note[] {
@@ -17,7 +18,7 @@ export function useNotesLive(filter: NoteFilter, searchQuery: string): Note[] {
 
     if (normalized) {
       filtered = filtered.filter((note) => {
-        const haystack = [note.title, note.preview, note.content, ...note.tags]
+        const haystack = [note.title, note.preview, stripHtml(note.content), ...note.tags]
           .join(' ')
           .toLowerCase()
         return haystack.includes(normalized)

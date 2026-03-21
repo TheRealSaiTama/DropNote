@@ -1,5 +1,7 @@
 import { nanoid } from 'nanoid'
 
+import { stripHtml } from '@/lib/note-html'
+
 import { db } from './dropnote-db'
 import type { Note, NoteWithAttachments } from '@/types/note'
 
@@ -8,7 +10,7 @@ export function generateId() {
 }
 
 export function buildPreview(content: string): string {
-  return content.replace(/\s+/g, ' ').trim().slice(0, 120)
+  return stripHtml(content).replace(/\s+/g, ' ').trim().slice(0, 120)
 }
 
 export function now(): string {

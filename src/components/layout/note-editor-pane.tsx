@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import { Archive, ArrowLeft, Paperclip, Pin, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -7,10 +7,10 @@ import { useFileDrop } from '@/hooks/use-file-drop'
 import { useNoteAttachments } from '@/hooks/use-note-attachments'
 import { usePasteAttachments } from '@/hooks/use-paste-attachments'
 import { MAX_FILE_SIZE_BYTES, formatFileSize } from '@/lib/attachment-utils'
-import { contentToHighlightHtml } from '@/lib/note-content-highlight'
 import type { Note } from '@/types/note'
 
 import { AttachmentPreview } from './attachment-preview'
+import { NoteRichEditor } from './note-rich-editor'
 
 const DEV = import.meta.env.DEV
 
@@ -34,8 +34,6 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
   const [localTitle, setLocalTitle] = useState(() => note?.title ?? '')
   const [localContent, setLocalContent] = useState(() => note?.content ?? '')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const mirrorRef = useRef<HTMLPreElement>(null)
   const attachments = useNoteAttachments(note?.id)
 
   const noteIdRef = useRef<string | null | undefined>(note?.id)
@@ -67,16 +65,6 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
       if (DEV) console.log('[editor] draft replaced from DB', note.id, note.updatedAt, note.syncStatus)
     }
   }, [note])
-
-  function syncMirrorScroll() {
-    const ta = textareaRef.current
-    const mirror = mirrorRef.current
-    if (ta && mirror) mirror.scrollTop = ta.scrollTop
-  }
-
-  useLayoutEffect(() => {
-    syncMirrorScroll()
-  }, [localContent])
 
   function handleTitleChange(value: string) {
     setLocalTitle(value)
@@ -195,32 +183,8 @@ export function NoteEditorPane({ note, onUpdateNote, onTogglePinned, onToggleArc
             aria-label="Note title"
           />
         </div>
-        <div className="note-canvas-ruled flex flex-col">
-          <div className="note-body-stack relative h-[min(60vh,28rem)] w-full shrink-0">
-            <pre
-              ref={mirrorRef}
-              className="note-body-mirror"
-              aria-hidden
-              dangerouslySetInnerHTML={{ __html: contentToHighlightHtml(localContent) }}
-            />
-            <textarea
-              ref={textareaRef}
-              value={localContent}
-              onChange={(e) => handleContentChange(e.target.value)}
-              onScroll={syncMirrorScroll}
-              placeholder="Start writing…"
-              className="note-body-editor"
-              aria-label="Note body; prefix lines with → or - [ ] for tasks, - [x] or ✓ when done"
-            />
-          </div>
-          <p className="border-t border-line/40 px-4 pb-2.5 pt-2 text-[10px] leading-snug text-muted-foreground/55">
-            Tasks:{' '}
-            <kbd className="rounded bg-muted/80 px-1 py-px font-sans text-[9px]">→</kbd>{' '}
-            <kbd className="rounded bg-muted/80 px-1 py-px font-sans text-[9px]">- [ ]</kbd>
-            {' · '}
-            <kbd className="rounded bg-muted/80 px-1 py-px font-sans text-[9px]">- [x]</kbd>{' '}
-            <kbd className="rounded bg-muted/80 px-1 py-px font-sans text-[9px]">✓</kbd>
-          </p>
+        <div className="note-canvas-ruled flex min-h-0 flex-1 flex-col">
+          <NoteRichEditor value={localContent} onChange={handleContentChange} placeholder="Start writing…" />
         </div>
       </div>
 
